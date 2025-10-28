@@ -348,6 +348,17 @@ int sharedDetector(const char * ip, int port, const std::string *buffcpy, const 
 				else return 103; // Generic API camera
 			} else if (fpResult.deviceType == "snmp_device") {
 				return 104; // SNMP device
+			} else if (fpResult.manufacturer == "MikroTik") {
+				return 105; // MikroTik router
+			} else if (fpResult.manufacturer == "Ubiquiti") {
+				return 106; // Ubiquiti equipment
+			} else if (fpResult.manufacturer == "TP-Link") {
+				if (fpResult.deviceType == "iot_device") return 107; // TP-Link IoT
+				else return 108; // TP-Link router/equipment
+			} else if (fpResult.deviceType == "iot_device" || 
+			          fpResult.deviceType == "smart_bulb" || 
+			          fpResult.deviceType == "smart_plug") {
+				return 109; // IoT device
 			}
 		}
 	}

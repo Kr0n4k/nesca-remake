@@ -2,17 +2,34 @@
 #include <MainStarter.h>
 #include <ResultExporter.h>
 #include <ProgressMonitor.h>
+#include <ConfigManager.h>
+#include <NetworkMonitor.h>
 #include <QCoreApplication>
 #include <QTextStream>
 #include <QStringList>
 #include <QFileInfo>
 #include <QDir>
+#include <QMap>
+#include <QTimer>
+#include <QObject>
 #include <iostream>
 #include <cstring>
 #include <chrono>
+#include <thread>
+#include <csignal>
 #include <externData.h>
 #include <Utils.h>
 #include <mainResources.h>
+#include <DeviceIdentifier.h>
+
+// Signal handler for graceful shutdown in monitor mode
+volatile bool gSignalReceived = false;
+void signalHandler(int signal) {
+	if (signal == SIGINT || signal == SIGTERM) {
+		gSignalReceived = true;
+		globalScanFlag = false;
+	}
+}
 
 // Initialize global stt object (will be used by other modules)
 STh *stt = nullptr;
@@ -52,6 +69,11 @@ void printUsage(const char* progName) {
 	out << "  --export-filter-type TYPES   Filter export by types (comma-separated: camera,auth,ftp,ssh,other)" << Qt::endl;
 	out << "  --live-stats                 Show live statistics during scan (default: enabled)" << Qt::endl;
 	out << "  --no-live-stats              Disable live statistics display" << Qt::endl;
+	out << "  --config FILE                Load configuration from file" << Qt::endl;
+	out << "  --profile NAME               Load pre-defined profile (quick-scan, full-scan, stealth-scan, iot-scan, network-scan)" << Qt::endl;
+	out << "  --monitor [INTERVAL]         Enable continuous network monitoring mode (default: 300 seconds)" << Qt::endl;
+	out << "  --diff                       Show changes from last scan (requires --monitor)" << Qt::endl;
+	out << "  --alert-new-device           Alert when new devices are detected (requires --monitor)" << Qt::endl;
 	out << "  -h, --help                   Show this help message" << Qt::endl;
 	out << Qt::endl;
 	out << "Examples:" << Qt::endl;
@@ -64,6 +86,11 @@ void printUsage(const char* progName) {
 	out << "  " << progName << " --ip 192.168.1.0/24 --max-rate 1000 --retries 2 --verify-ssl" << Qt::endl;
 	out << "  " << progName << " --ip 10.0.0.0/24 --user-agent \"Nesca-Scanner/2.0\" --timeout 5000" << Qt::endl;
 	out << "  " << progName << " --ip 192.168.1.0/24 --adaptive --smart-scan --batch-size 50" << Qt::endl;
+	out << "  " << progName << " --ip 192.168.1.0/24 --config pentest.conf" << Qt::endl;
+	out << "  " << progName << " --ip 10.0.0.0/24 --profile quick-scan" << Qt::endl;
+	out << "  " << progName << " --ip 192.168.1.0/24 --profile full-scan --ports 80,443" << Qt::endl;
+	out << "  " << progName << " --ip 192.168.1.0/24 --monitor 600" << Qt::endl;
+	out << "  " << progName << " --ip 192.168.1.0/24 --monitor --diff --alert-new-device" << Qt::endl;
 	out << "  " << progName << " --export-only" << Qt::endl;
 	out << "  " << progName << " --export-only results_2025.01.15_target" << Qt::endl;
 	out << "  " << progName << " --ip 192.168.1.0/24 --no-export" << Qt::endl;
@@ -72,6 +99,10 @@ void printUsage(const char* progName) {
 int main(int argc, char *argv[])
 {
 	QCoreApplication app(argc, argv);
+	
+	// Set up signal handlers for graceful shutdown
+	signal(SIGINT, signalHandler);
+	signal(SIGTERM, signalHandler);
 	
 	QString mode;
 	QString target;
@@ -86,7 +117,41 @@ int main(int argc, char *argv[])
 	QStringList exportFilterPorts;
 	QStringList exportFilterTypes;
 	bool liveStats = true;  // Default: enabled
+	QString configFile;
+	QString profileName;
+	QMap<QString, QString> cliArgs;  // Store CLI args for merging with config
+	bool monitorMode = false;
+	int monitorInterval = 300;  // Default: 5 minutes
+	bool showDiff = false;
+	bool alertNewDevice = false;
 	std::chrono::steady_clock::time_point scanStartTime;
+	
+	ConfigManager configManager;
+	NetworkMonitor* networkMonitor = nullptr;
+	
+	// First pass: Parse config/profile arguments early
+	for (int i = 1; i < argc; i++) {
+		if (strcmp(argv[i], "--config") == 0) {
+			if (i + 1 < argc) {
+				configFile = QString(argv[++i]);
+			}
+		} else if (strcmp(argv[i], "--profile") == 0) {
+			if (i + 1 < argc) {
+				profileName = QString(argv[++i]);
+			}
+		}
+	}
+	
+	// Load configuration or profile
+	if (!profileName.isEmpty()) {
+		if (!configManager.loadProfile(profileName)) {
+			return 1;
+		}
+	} else if (!configFile.isEmpty()) {
+		if (!configManager.loadConfig(configFile)) {
+			return 1;
+		}
+	}
 	
 	// Parse command line arguments first to check for export-only mode
 	for (int i = 1; i < argc; i++) {
@@ -117,9 +182,14 @@ int main(int argc, char *argv[])
 				err << "Error: --import requires a file path" << Qt::endl;
 				return 1;
 			}
+		} else if (strcmp(argv[i], "--config") == 0) {
+			i++;  // Skip, already processed
+		} else if (strcmp(argv[i], "--profile") == 0) {
+			i++;  // Skip, already processed
 		} else if (strcmp(argv[i], "-p") == 0 || strcmp(argv[i], "--ports") == 0) {
 			if (i + 1 < argc) {
 				ports = QString(argv[++i]);
+				cliArgs["ports"] = ports;
 			} else {
 				QTextStream err(stderr);
 				err << "Error: --ports requires port list" << Qt::endl;
@@ -128,6 +198,7 @@ int main(int argc, char *argv[])
 		} else if (strcmp(argv[i], "-t") == 0 || strcmp(argv[i], "--threads") == 0) {
 			if (i + 1 < argc) {
 				gThreads = atoi(argv[++i]);
+				cliArgs["threads"] = QString::number(gThreads);
 			} else {
 				QTextStream err(stderr);
 				err << "Error: --threads requires a number" << Qt::endl;
@@ -295,6 +366,21 @@ int main(int argc, char *argv[])
 			liveStats = true;
 		} else if (strcmp(argv[i], "--no-live-stats") == 0) {
 			liveStats = false;
+		} else if (strcmp(argv[i], "--monitor") == 0) {
+			monitorMode = true;
+			if (i + 1 < argc && argv[i + 1][0] != '-') {
+				bool ok;
+				int interval = QString(argv[++i]).toInt(&ok);
+				if (ok && interval > 0) {
+					monitorInterval = interval;
+				} else {
+					i--;  // Put it back if not a number
+				}
+			}
+		} else if (strcmp(argv[i], "--diff") == 0) {
+			showDiff = true;
+		} else if (strcmp(argv[i], "--alert-new-device") == 0) {
+			alertNewDevice = true;
 		} else if (strcmp(argv[i], "-h") == 0 || strcmp(argv[i], "--help") == 0) {
 			printUsage(argv[0]);
 			return 0;
@@ -306,6 +392,106 @@ int main(int argc, char *argv[])
 		}
 	}
 	
+	// Merge command line arguments with config (CLI takes precedence)
+	configManager.mergeCommandLineArgs(cliArgs);
+	
+	// Apply configuration settings to global variables
+	ScanConfig scanCfg = configManager.getScanConfig();
+	DetectionConfig detCfg = configManager.getDetectionConfig();
+	ExportConfig expCfg = configManager.getExportConfig();
+	
+	// Apply scan config (only if not set via CLI)
+	if (gThreads == 0 && scanCfg.threads > 0) {
+		gThreads = scanCfg.threads;
+	}
+	if (ports == PORTSET && !scanCfg.ports.isEmpty()) {
+		ports = scanCfg.ports;
+	}
+	if (gTimeOut == 3 && scanCfg.timeout > 0) {  // Default is 3 seconds
+		int timeoutMs = scanCfg.timeout;
+		gTimeOut = (timeoutMs + 999) / 1000;
+		if (gTimeOut < 1) gTimeOut = 1;
+	}
+	if (gMaxRate == 0 && scanCfg.maxRate >= 0) {
+		gMaxRate = scanCfg.maxRate;
+	}
+	if (gRetries == 0 && scanCfg.retries >= 0) {
+		gRetries = scanCfg.retries;
+	}
+	if (!scanCfg.verifySSL) {  // Apply only if explicitly set in config
+		// Already default, no need to change
+	}
+	if (scanCfg.adaptive) {
+		gAdaptiveScan = true;
+	}
+	if (scanCfg.smartScan) {
+		gSmartScan = true;
+	}
+	if (gBatchSize == 0 && scanCfg.batchSize > 0) {
+		gBatchSize = scanCfg.batchSize;
+	}
+	if (strlen(gUserAgent) == 0 && !scanCfg.userAgent.isEmpty()) {
+		strncpy(gUserAgent, scanCfg.userAgent.toLocal8Bit().data(), sizeof(gUserAgent) - 1);
+		gUserAgent[sizeof(gUserAgent) - 1] = '\0';
+	}
+	if (tld == ".com" && !scanCfg.tld.isEmpty() && scanCfg.tld != ".com") {
+		tld = scanCfg.tld;
+	}
+	
+	// Apply export config (if not set via CLI)
+	if (exportFormat == "json" && !expCfg.formats.isEmpty()) {
+		if (expCfg.formats.contains("both") || 
+		    (expCfg.formats.contains("json") && expCfg.formats.contains("csv"))) {
+			exportFormat = "both";
+		} else if (expCfg.formats.contains("csv")) {
+			exportFormat = "csv";
+		} else if (expCfg.formats.contains("json")) {
+			exportFormat = "json";
+		}
+	}
+	if (exportFile.isEmpty() && !expCfg.outputFile.isEmpty()) {
+		exportFile = expCfg.outputFile;
+	}
+	if (exportFilterIP.isEmpty() && !expCfg.filterIP.isEmpty()) {
+		exportFilterIP = expCfg.filterIP;
+	}
+	if (exportFilterPorts.isEmpty() && !expCfg.filterPorts.isEmpty()) {
+		exportFilterPorts = expCfg.filterPorts;
+	}
+	if (exportFilterTypes.isEmpty() && !expCfg.filterTypes.isEmpty()) {
+		exportFilterTypes = expCfg.filterTypes;
+	}
+	if (!expCfg.autoExport && !noExport) {
+		noExport = true;
+		exportFormat = "";
+	}
+	
+	// Validate configuration
+	if (!configManager.validate()) {
+		QTextStream err(stderr);
+		err << "[ERROR] Invalid configuration values" << Qt::endl;
+		return 1;
+	}
+	
+	// Initialize network monitor if enabled
+	if (monitorMode && !exportOnly) {
+		networkMonitor = new NetworkMonitor();
+		networkMonitor->setAlertOnNewDevice(alertNewDevice);
+		networkMonitor->startMonitoring(target, mode, monitorInterval);
+		
+		QTextStream out(stdout);
+		out << Qt::endl;
+		out << "[INFO] Monitoring mode enabled" << Qt::endl;
+		out << "[INFO] Scan interval: " << monitorInterval << " seconds" << Qt::endl;
+		if (alertNewDevice) {
+			out << "[INFO] Alerts for new devices: enabled" << Qt::endl;
+		}
+		if (showDiff) {
+			out << "[INFO] Showing differences between scans: enabled" << Qt::endl;
+		}
+		out << Qt::endl;
+	}
+	
 	// Initialize stt object only if not in export-only mode
 	if (!exportOnly) {
 		stt = new STh();
@@ -314,6 +500,26 @@ int main(int argc, char *argv[])
 			gThreads = 100; // Default thread count
 		}
 		scanStartTime = std::chrono::steady_clock::now(); // Initialize start time
+		
+		// Print loaded configuration
+		if (!profileName.isEmpty() || !configFile.isEmpty()) {
+			QTextStream out(stdout);
+			out << Qt::endl;
+			out << "[INFO] Configuration applied:" << Qt::endl;
+			if (!profileName.isEmpty()) {
+				out << "  Profile: " << profileName << Qt::endl;
+			}
+			if (!configFile.isEmpty()) {
+				out << "  Config file: " << configFile << Qt::endl;
+			}
+			out << "  Threads: " << gThreads << Qt::endl;
+			out << "  Ports: " << ports << Qt::endl;
+			out << "  Timeout: " << (gTimeOut * 1000) << " ms" << Qt::endl;
+			if (gAdaptiveScan) out << "  Adaptive scanning: enabled" << Qt::endl;
+			if (gSmartScan) out << "  Smart scan: enabled" << Qt::endl;
+			if (gBatchSize > 0) out << "  Batch size: " << gBatchSize << Qt::endl;
+			out << Qt::endl;
+		}
 	}
 	
 	// Handle export-only mode
@@ -616,9 +822,129 @@ int main(int argc, char *argv[])
 			QJsonObject stats = exporter.getStatistics();
 			out << "[INFO] Statistics: " << stats["total"].toInt() << " total results" << Qt::endl;
 		}
+		
+		// Create snapshot for monitoring if enabled
+		if (networkMonitor && monitorMode) {
+			networkMonitor->createSnapshotFromExporter(exporter, target, mode);
+			networkMonitor->saveCurrentSnapshot();
+			
+			// Show diff if requested
+			if (showDiff) {
+				MonitorDiff diff = networkMonitor->getDiff();
+				if (diff.totalNew > 0 || diff.totalRemoved > 0 || diff.totalChanged > 0) {
+					networkMonitor->printDiff(diff);
+				} else {
+					QTextStream out(stdout);
+					out << Qt::endl << "[INFO] No changes detected since last scan" << Qt::endl;
+				}
+			}
+			
+			// Check and alert for new devices
+			if (alertNewDevice) {
+				MonitorDiff diff = networkMonitor->getDiff();
+				networkMonitor->checkAndAlert(diff);
+			}
+		}
+	}
+	
+	// If monitoring mode, keep scanning at intervals
+	if (monitorMode && networkMonitor && !exportOnly) {
+		QTextStream out(stdout);
+		out << Qt::endl;
+		out << "[INFO] Entering continuous monitoring mode..." << Qt::endl;
+		out << "[INFO] Press Ctrl+C to stop" << Qt::endl;
+		out << Qt::endl;
+		
+		int scanNumber = 1;
+		ResultExporter monitorExporter;
+		
+		while (monitorMode && networkMonitor->isMonitoring() && !gSignalReceived) {
+			// Wait for next scan interval (check for signals)
+			int waitSeconds = monitorInterval;
+			const int checkInterval = 1;  // Check every second
+			while (waitSeconds > 0 && !gSignalReceived) {
+				std::this_thread::sleep_for(std::chrono::seconds(checkInterval));
+				waitSeconds -= checkInterval;
+			}
+			
+			if (gSignalReceived || !monitorMode || !networkMonitor->isMonitoring()) {
+				if (gSignalReceived) {
+					out << Qt::endl << "[INFO] Interrupt received, stopping monitoring..." << Qt::endl;
+				}
+				break;
+			}
+			
+			out << Qt::endl << "[INFO] =========================================" << Qt::endl;
+			out << "[INFO] Starting scan #" << ++scanNumber << "..." << Qt::endl;
+			out << "[INFO] =========================================" << Qt::endl;
+			
+			// Reset scan state
+			globalScanFlag = true;
+			scanStartTime = std::chrono::steady_clock::now();
+			
+			// Restart scan
+			if (stt) {
+				stt->start();
+				stt->wait();
+			}
+			
+			// Wait for progress monitor if active
+			if (liveStats && progressMonitor) {
+				progressMonitor->stop();
+				progressMonitor->wait(3000);
+			}
+			
+			// Export and create snapshot
+			monitorExporter.clear();
+			QString resultsDir = "./";
+			QDir dir(".");
+			QStringList filters;
+			filters << "results_*";
+			QStringList entries = dir.entryList(filters, QDir::Dirs | QDir::NoDotAndDotDot);
+			if (!entries.isEmpty()) {
+				entries.sort();
+				resultsDir = entries.last();
+				monitorExporter.parseHTMLResults(resultsDir);
+			}
+			
+			// Create snapshot
+			if (!monitorExporter.getResults().empty()) {
+				networkMonitor->createSnapshotFromExporter(monitorExporter, target, mode);
+				networkMonitor->saveCurrentSnapshot();
+				
+				// Show diff if requested
+				if (showDiff) {
+					MonitorDiff diff = networkMonitor->getDiff();
+					if (diff.totalNew > 0 || diff.totalRemoved > 0 || diff.totalChanged > 0) {
+						networkMonitor->printDiff(diff);
+					} else {
+						out << "[INFO] No changes detected since last scan" << Qt::endl;
+					}
+				}
+				
+				// Check and alert for new devices
+				if (alertNewDevice) {
+					MonitorDiff diff = networkMonitor->getDiff();
+					networkMonitor->checkAndAlert(diff);
+				}
+			}
+			
+			// Show statistics
+			out << Qt::endl;
+			out << "[INFO] Monitoring Statistics:" << Qt::endl;
+			out << "  Total monitored devices: " << networkMonitor->getTotalMonitoredDevices() << Qt::endl;
+			out << "  Last scan: " << networkMonitor->getLastScanTime().toString(Qt::ISODate) << Qt::endl;
+			out << "  Next scan in: " << monitorInterval << " seconds" << Qt::endl;
+			out << Qt::endl;
+		}
 	}
 	
 	// Cleanup
+	if (networkMonitor) {
+		networkMonitor->stopMonitoring();
+		delete networkMonitor;
+		networkMonitor = nullptr;
+	}
 	delete stt;
 	stt = nullptr;
 	

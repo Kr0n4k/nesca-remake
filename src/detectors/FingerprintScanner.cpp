@@ -309,6 +309,49 @@ QMap<QString, QStringList> FingerprintScanner::getManufacturerEndpoints() {
         << "/cgi-bin/main-cgi"
         << "/cgi-bin/main-cgi?json=";
     
+    // TP-Link
+    endpoints["TP-Link"] = QStringList()
+        << "/cgi-bin/luci"
+        << "/webpages/login.html"
+        << "/userRpm/StatusRpm.htm"
+        << "/cgi-bin/userRpm/StatusRpm.htm"
+        << "/cgi-bin/luci/;stok=/api/system/device_info"
+        << "/cgi-bin/luci/;stok=/api/misystem/status"
+        << "/tplogin.cn"  // TP-Link router login
+        << "/kasa/device"  // Kasa IoT devices
+        << "/app/device"   // Kasa app endpoint
+        << "/api/device/list";  // Kasa API
+    
+    // MikroTik
+    endpoints["MikroTik"] = QStringList()
+        << "/winbox"  // Winbox protocol endpoint
+        << "/jsproxy" // RouterOS web interface
+        << "/webfig"  // RouterOS webfig
+        << "/";       // Root - check Server header
+    
+    // Ubiquiti
+    endpoints["Ubiquiti"] = QStringList()
+        << "/login.cgi"
+        << "/login"
+        << "/api/auth/login"  // UniFi Controller
+        << "/api/self"        // UniFi API
+        << "/status.cgi"      // AirOS
+        << "/sta.cgi"         // AirOS stations
+        << "/manage"          // UniFi management
+        << "/invoke";         // UniFi invoke API
+    
+    // IoT Smart Devices
+    endpoints["IoT-Smart"] = QStringList()
+        << "/api/device/list"      // Generic IoT API
+        << "/tuya"
+        << "/v1/device/list"       // Tuya/Smart Life
+        << "/config.json"          // Device config
+        << "/api/registration"     // Device registration
+        << "/api/wifi/config"      // WiFi config
+        << "/api/system"           // System info
+        << "/miio"                 // Xiaomi MI Home
+        << "/yeelink";             // Yeelight
+    
     return endpoints;
 }
 
@@ -497,12 +540,417 @@ FingerprintResult FingerprintScanner::checkSNMP(const char* ip, int port) {
     return result;
 }
 
+// MikroTik RouterOS / Winbox detection
+FingerprintResult FingerprintScanner::checkMikroTik(const char* ip, int port) {
+    FingerprintResult result;
+    result.detected = false;
+    result.confidence = 0;
+    
+    // Check port 8291 (Winbox protocol) - try TCP connection first
+    if (port == 8291) {
+        // Winbox uses binary protocol - check if port accepts connection
+        Connector con;
+        std::string buffer;
+        char url[512];
+        sprintf(url, "http://%s:%d/", ip, port);
+        int res = con.nConnect(url, port, &buffer);
+        if (res >= 0) {  // Port is open
+            result.detected = true;
+            result.manufacturer = "MikroTik";
+            result.deviceType = "router";
+            result.endpoint = "/winbox";
+            result.confidence = 85;
+            result.details = R"({"protocol":"winbox","port":8291})";
+            return result;
+        }
+    }
+    
+    // Check HTTP endpoints for RouterOS web interface
+    QStringList mikrotikPaths = QStringList()
+        << "/winbox"
+        << "/jsproxy"
+        << "/webfig"
+        << "/";
+    
+    for (const QString& path : mikrotikPaths) {
+        std::string buffer;
+        char url[512];
+        sprintf(url, "http://%s:%d%s", ip, port, path.toLocal8Bit().data());
+        
+        Connector con;
+        int res = con.nConnect(url, port, &buffer);
+        
+        if (res > 0) {
+            std::string lowerBuffer = buffer;
+            for (size_t i = 0; i < buffer.length() && i < 4096; i++) {
+                lowerBuffer[i] = std::tolower(buffer[i]);
+            }
+            
+            // Check for MikroTik signatures
+            if (Utils::ustrstr(&lowerBuffer, "mikrotik") != -1 ||
+                Utils::ustrstr(&lowerBuffer, "routeros") != -1 ||
+                Utils::ustrstr(&lowerBuffer, "routerboard") != -1 ||
+                Utils::ustrstr(&lowerBuffer, "winbox") != -1 ||
+                Utils::ustrstr(&lowerBuffer, "server: mikrotik") != -1) {
+                
+                result.detected = true;
+                result.manufacturer = "MikroTik";
+                result.deviceType = "router";
+                result.endpoint = path;
+                result.confidence = 90;
+                
+                // Try to extract RouterBoard model
+                if (Utils::ustrstr(&buffer, "RouterBoard") != -1) {
+                    std::size_t pos = buffer.find("RouterBoard");
+                    if (pos != std::string::npos) {
+                        std::size_t start = pos;
+                        std::size_t end = buffer.find("\n", start);
+                        if (end == std::string::npos) end = buffer.find("<", start);
+                        if (end != std::string::npos && end - start < 100) {
+                            std::string model = buffer.substr(start, end - start);
+                            result.model = QString::fromStdString(model);
+                        }
+                    }
+                }
+                
+                return result;
+            }
+        }
+    }
+    
+    return result;
+}
+
+// Ubiquiti UniFi / AirOS detection
+FingerprintResult FingerprintScanner::checkUbiquiti(const char* ip, int port) {
+    FingerprintResult result;
+    result.detected = false;
+    result.confidence = 0;
+    
+    QStringList ubiquitiPaths = QStringList()
+        << "/login.cgi"
+        << "/login"
+        << "/api/auth/login"
+        << "/api/self"
+        << "/status.cgi"
+        << "/sta.cgi"
+        << "/manage"
+        << "/";
+    
+    for (const QString& path : ubiquitiPaths) {
+        std::string buffer;
+        char url[512];
+        sprintf(url, "http://%s:%d%s", ip, port, path.toLocal8Bit().data());
+        
+        Connector con;
+        int res = con.nConnect(url, port, &buffer);
+        
+        if (res > 0) {
+            std::string lowerBuffer = buffer;
+            for (size_t i = 0; i < buffer.length() && i < 4096; i++) {
+                lowerBuffer[i] = std::tolower(buffer[i]);
+            }
+            
+            // Check for Ubiquiti signatures
+            bool isUbiquiti = false;
+            QString deviceTypeStr = "network_equipment";
+            
+            if (Utils::ustrstr(&lowerBuffer, "ubiquiti") != -1 ||
+                Utils::ustrstr(&lowerBuffer, "unifi") != -1 ||
+                Utils::ustrstr(&lowerBuffer, "airos") != -1 ||
+                Utils::ustrstr(&lowerBuffer, "airmax") != -1) {
+                isUbiquiti = true;
+            }
+            
+            // Check Server header
+            std::string headers = buffer;
+            if (headers.length() > 2048) {
+                headers = headers.substr(0, 2048);
+            }
+            if (Utils::ustrstr(&headers, "Server:") != -1) {
+                std::size_t pos = headers.find("Server:");
+                if (pos != std::string::npos) {
+                    std::size_t start = pos + 7;
+                    std::size_t end = headers.find("\r\n", start);
+                    if (end == std::string::npos) end = headers.find("\n", start);
+                    if (end != std::string::npos) {
+                        std::string server = headers.substr(start, end - start);
+                        std::string lowerServer = server;
+                        for (char& c : lowerServer) c = std::tolower(c);
+                        if (lowerServer.find("unifi") != std::string::npos ||
+                            lowerServer.find("ubiquiti") != std::string::npos ||
+                            lowerServer.find("airmax") != std::string::npos) {
+                            isUbiquiti = true;
+                        }
+                    }
+                }
+            }
+            
+            if (isUbiquiti) {
+                result.detected = true;
+                result.manufacturer = "Ubiquiti";
+                result.endpoint = path;
+                result.confidence = 90;
+                
+                // Determine device type
+                if (Utils::ustrstr(&lowerBuffer, "unifi") != -1 ||
+                    Utils::ustrstr(&lowerBuffer, "uap") != -1 ||
+                    Utils::ustrstr(&lowerBuffer, "usg") != -1 ||
+                    Utils::ustrstr(&lowerBuffer, "udm") != -1) {
+                    deviceTypeStr = "network_equipment";
+                    result.deviceType = "unifi";
+                } else if (Utils::ustrstr(&lowerBuffer, "airmax") != -1 ||
+                          Utils::ustrstr(&lowerBuffer, "edgerouter") != -1) {
+                    deviceTypeStr = "wireless_equipment";
+                    result.deviceType = "wireless_equipment";
+                } else {
+                    result.deviceType = "network_equipment";
+                }
+                
+                return result;
+            }
+        }
+    }
+    
+    return result;
+}
+
+// TP-Link device detection (routers, cameras, IoT)
+FingerprintResult FingerprintScanner::checkTPLink(const char* ip, int port) {
+    FingerprintResult result;
+    result.detected = false;
+    result.confidence = 0;
+    
+    QStringList tplinkPaths = QStringList()
+        << "/cgi-bin/luci"
+        << "/webpages/login.html"
+        << "/userRpm/StatusRpm.htm"
+        << "/tplogin.cn"
+        << "/kasa/device"
+        << "/app/device"
+        << "/api/device/list"
+        << "/";
+    
+    for (const QString& path : tplinkPaths) {
+        std::string buffer;
+        char url[512];
+        sprintf(url, "http://%s:%d%s", ip, port, path.toLocal8Bit().data());
+        
+        Connector con;
+        int res = con.nConnect(url, port, &buffer);
+        
+        if (res > 0) {
+            std::string lowerBuffer = buffer;
+            for (size_t i = 0; i < buffer.length() && i < 4096; i++) {
+                lowerBuffer[i] = std::tolower(buffer[i]);
+            }
+            
+            // Check for TP-Link signatures
+            bool isTPLink = false;
+            QString deviceTypeStr = "network_equipment";
+            
+            if (Utils::ustrstr(&lowerBuffer, "tp-link") != -1 ||
+                Utils::ustrstr(&lowerBuffer, "tplink") != -1 ||
+                Utils::ustrstr(&lowerBuffer, "tplogin") != -1 ||
+                Utils::ustrstr(&lowerBuffer, "archer") != -1 ||
+                Utils::ustrstr(&lowerBuffer, "deco") != -1) {
+                isTPLink = true;
+            }
+            
+            // Check for Kasa IoT devices
+            if (Utils::ustrstr(&lowerBuffer, "kasa") != -1 ||
+                path.contains("kasa")) {
+                isTPLink = true;
+                deviceTypeStr = "iot_device";
+            }
+            
+            // Check for Tapo cameras
+            if (Utils::ustrstr(&lowerBuffer, "tapo") != -1) {
+                isTPLink = true;
+                deviceTypeStr = "camera";
+            }
+            
+            if (isTPLink) {
+                result.detected = true;
+                result.manufacturer = "TP-Link";
+                result.deviceType = deviceTypeStr;
+                result.endpoint = path;
+                result.confidence = 85;
+                
+                // Try to extract model
+                if (Utils::ustrstr(&buffer, "TL-") != -1 ||
+                    Utils::ustrstr(&buffer, "Archer") != -1) {
+                    std::size_t pos = buffer.find("TL-");
+                    if (pos == std::string::npos) pos = buffer.find("Archer");
+                    if (pos != std::string::npos) {
+                        std::size_t end = buffer.find(" ", pos);
+                        if (end == std::string::npos) end = buffer.find("\n", pos);
+                        if (end == std::string::npos) end = buffer.find("<", pos);
+                        if (end != std::string::npos && end - pos < 50) {
+                            std::string model = buffer.substr(pos, end - pos);
+                            result.model = QString::fromStdString(model);
+                        }
+                    }
+                }
+                
+                return result;
+            }
+        }
+    }
+    
+    return result;
+}
+
+// IoT Smart Devices detection (smart bulbs, plugs, etc.)
+FingerprintResult FingerprintScanner::checkIoTDevices(const char* ip, int port) {
+    FingerprintResult result;
+    result.detected = false;
+    result.confidence = 0;
+    
+    QStringList iotPaths = QStringList()
+        << "/api/device/list"
+        << "/tuya"
+        << "/v1/device/list"
+        << "/config.json"
+        << "/api/system"
+        << "/miio"
+        << "/yeelink"
+        << "/";
+    
+    for (const QString& path : iotPaths) {
+        std::string buffer;
+        char url[512];
+        sprintf(url, "http://%s:%d%s", ip, port, path.toLocal8Bit().data());
+        
+        Connector con;
+        int res = con.nConnect(url, port, &buffer);
+        
+        if (res > 0) {
+            std::string lowerBuffer = buffer;
+            for (size_t i = 0; i < buffer.length() && i < 4096; i++) {
+                lowerBuffer[i] = std::tolower(buffer[i]);
+            }
+            
+            QString manufacturerStr;
+            QString deviceTypeStr = "iot_device";
+            
+            // Check for Tuya / Smart Life
+            if (Utils::ustrstr(&lowerBuffer, "tuya") != -1 ||
+                Utils::ustrstr(&lowerBuffer, "smartlife") != -1 ||
+                Utils::ustrstr(&lowerBuffer, "smart.*life") != -1 ||
+                path.contains("tuya")) {
+                manufacturerStr = "Tuya";
+            }
+            
+            // Check for Yeelight
+            if (Utils::ustrstr(&lowerBuffer, "yeelight") != -1 ||
+                path.contains("yeelink")) {
+                manufacturerStr = "Yeelight";
+                deviceTypeStr = "smart_bulb";
+            }
+            
+            // Check for Xiaomi MI Home
+            if (Utils::ustrstr(&lowerBuffer, "xiaomi") != -1 ||
+                Utils::ustrstr(&lowerBuffer, "mi.*home") != -1 ||
+                path.contains("miio")) {
+                manufacturerStr = "Xiaomi";
+            }
+            
+            // Check for smart bulb indicators
+            if (Utils::ustrstr(&lowerBuffer, "bulb") != -1 ||
+                Utils::ustrstr(&lowerBuffer, "lamp") != -1 ||
+                Utils::ustrstr(&lowerBuffer, "light") != -1) {
+                deviceTypeStr = "smart_bulb";
+            }
+            
+            // Check for smart plug indicators
+            if (Utils::ustrstr(&lowerBuffer, "plug") != -1 ||
+                Utils::ustrstr(&lowerBuffer, "socket") != -1 ||
+                Utils::ustrstr(&lowerBuffer, "outlet") != -1) {
+                deviceTypeStr = "smart_plug";
+            }
+            
+            // Generic IoT detection - check for common IoT API patterns
+            if (manufacturerStr.isEmpty()) {
+                if (Utils::ustrstr(&lowerBuffer, "device.*list") != -1 ||
+                    Utils::ustrstr(&lowerBuffer, "\"devices\"") != -1 ||
+                    Utils::ustrstr(&lowerBuffer, "device_id") != -1 ||
+                    Utils::ustrstr(&lowerBuffer, "smart.*device") != -1) {
+                    manufacturerStr = "IoT-Smart";
+                }
+            }
+            
+            if (!manufacturerStr.isEmpty()) {
+                result.detected = true;
+                result.manufacturer = manufacturerStr;
+                result.deviceType = deviceTypeStr;
+                result.endpoint = path;
+                result.confidence = (manufacturerStr == "IoT-Smart") ? 70 : 85;
+                
+                // Try to extract device name/model
+                if (Utils::ustrstr(&buffer, "\"name\"") != -1 ||
+                    Utils::ustrstr(&buffer, "\"model\"") != -1) {
+                    // Basic JSON extraction
+                    std::size_t namePos = buffer.find("\"name\"");
+                    if (namePos != std::string::npos) {
+                        std::size_t start = buffer.find("\"", namePos + 6);
+                        if (start != std::string::npos) {
+                            start++;
+                            std::size_t end = buffer.find("\"", start);
+                            if (end != std::string::npos && end - start < 100) {
+                                std::string name = buffer.substr(start, end - start);
+                                result.model = QString::fromStdString(name);
+                            }
+                        }
+                    }
+                }
+                
+                return result;
+            }
+        }
+    }
+    
+    return result;
+}
+
 FingerprintResult FingerprintScanner::scanDevice(const char* ip, int port) {
     FingerprintResult result;
     result.detected = false;
     result.confidence = 0;
     
-    // Try ONVIF first (common on port 80)
+    // Try MikroTik (port 80, 8080, 8291)
+    if (port == 80 || port == 8080 || port == 8291) {
+        result = checkMikroTik(ip, port);
+        if (result.detected) {
+            return result;
+        }
+    }
+    
+    // Try Ubiquiti (port 80, 8080, 8443)
+    if (port == 80 || port == 8080 || port == 8443) {
+        result = checkUbiquiti(ip, port);
+        if (result.detected) {
+            return result;
+        }
+    }
+    
+    // Try TP-Link (port 80, 8080)
+    if (port == 80 || port == 8080) {
+        result = checkTPLink(ip, port);
+        if (result.detected) {
+            return result;
+        }
+    }
+    
+    // Try IoT devices (port 80, 8080, 8081)
+    if (port == 80 || port == 8080 || port == 8081) {
+        result = checkIoTDevices(ip, port);
+        if (result.detected) {
+            return result;
+        }
+    }
+    
+    // Try ONVIF (common on port 80, 8080)
     if (port == 80 || port == 8080) {
         result = checkONVIF(ip, port);
         if (result.detected) {

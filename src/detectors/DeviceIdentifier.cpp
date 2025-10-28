@@ -21,7 +21,10 @@ void DeviceIdentifier::initializePatterns() {
     manufacturerPatterns["Foscam"] = R"(foscam|Foscam|FOSCAM)";
     manufacturerPatterns["Uniview"] = R"(uniview|Uniview|UNIVIEW)";
     manufacturerPatterns["Reolink"] = R"(reolink|Reolink|REOLINK)";
-    manufacturerPatterns["TP-Link"] = R"(tp-?link|TP-?Link|TP-LINK)";
+    manufacturerPatterns["TP-Link"] = R"(tp-?link|TP-?Link|TP-LINK|tplink|TPLINK)";
+    manufacturerPatterns["MikroTik"] = R"(mikrotik|MikroTik|MIKROTIK|routeros|RouterOS|RouterBoard)";
+    manufacturerPatterns["Ubiquiti"] = R"(ubiquiti|Ubiquiti|UBIQUITI|unifi|UniFi|UNIFI|airos|AirOS)";
+    manufacturerPatterns["IoT-Smart"] = R"(tuya|Tuya|TUYA|smart.*life|smartlife|yeelight|Yeelight|YEELIGHT|xiaomi|Xiaomi|MI|mi.*home|smart.*bulb|smart.*plug|smart.*socket)";
     
     // Model patterns (common model identifiers)
     modelPatterns["Hikvision"] = R"(DS-|IPC-|DVR-|NVR-|Hikvision)";
@@ -29,6 +32,9 @@ void DeviceIdentifier::initializePatterns() {
     modelPatterns["Axis"] = R"(P\d+|M\d+|Q\d+|Axis)";
     modelPatterns["Panasonic"] = R"(WV-|BB-|Panasonic)";
     modelPatterns["Sony"] = R"(SNC-|IPELA|Sony)";
+    modelPatterns["TP-Link"] = R"(TL-|Archer|Deco|Kasa|Tapo|CP\d+|NC\d+|C\d+|WR\d+|AX\d+)";
+    modelPatterns["MikroTik"] = R"(RouterBoard|RB\d+|CCR|CHR|CRS|hEX|hAP|wAP|mAP)";
+    modelPatterns["Ubiquiti"] = R"(UniFi|UAP|USG|UDM|AirMax|AirRouter|EdgeRouter|PowerBeam|NanoBeam|AirFiber)";
 }
 
 DeviceIdentifier::DeviceIdentifier() {
@@ -80,7 +86,38 @@ DeviceInfo DeviceIdentifier::identify(const QString &headers, const QString &bod
     
     // Determine device type
     QString lowerHeaders = headers.toLower();
-    if (lowerHeaders.contains("ip camera") || lowerCombined.contains("ipcam") || 
+    if (info.manufacturer == "MikroTik") {
+        info.deviceType = "router";
+        info.confidence = "high";
+    } else if (info.manufacturer == "Ubiquiti") {
+        if (lowerCombined.contains("unifi") || lowerCombined.contains("uap") || lowerCombined.contains("usg")) {
+            info.deviceType = "network_equipment";
+        } else if (lowerCombined.contains("airmax") || lowerCombined.contains("edgerouter")) {
+            info.deviceType = "wireless_equipment";
+        } else {
+            info.deviceType = "network_equipment";
+        }
+        info.confidence = "high";
+    } else if (info.manufacturer == "TP-Link") {
+        if (lowerCombined.contains("camera") || lowerCombined.contains("ipcam") || lowerCombined.contains("tapo") || lowerCombined.contains("nc")) {
+            info.deviceType = "camera";
+        } else if (lowerCombined.contains("kasa") || lowerCombined.contains("smart") || lowerCombined.contains("plug") || lowerCombined.contains("bulb")) {
+            info.deviceType = "iot_device";
+        } else if (lowerCombined.contains("router") || lowerCombined.contains("archer") || lowerCombined.contains("deco") || lowerCombined.contains("wr") || lowerCombined.contains("ax")) {
+            info.deviceType = "router";
+        } else {
+            info.deviceType = "network_equipment";
+        }
+    } else if (info.manufacturer == "IoT-Smart") {
+        if (lowerCombined.contains("bulb") || lowerCombined.contains("lamp") || lowerCombined.contains("light")) {
+            info.deviceType = "smart_bulb";
+        } else if (lowerCombined.contains("plug") || lowerCombined.contains("socket") || lowerCombined.contains("outlet")) {
+            info.deviceType = "smart_plug";
+        } else {
+            info.deviceType = "iot_device";
+        }
+        info.confidence = "high";
+    } else if (lowerHeaders.contains("ip camera") || lowerCombined.contains("ipcam") || 
         lowerCombined.contains("network camera")) {
         info.deviceType = "camera";
     } else if (lowerCombined.contains("dvr") && !lowerCombined.contains("ip")) {

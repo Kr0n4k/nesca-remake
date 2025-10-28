@@ -88,7 +88,9 @@ SOURCES += src/network/Connector.cpp \
            src/network/FileUpdater.cpp \
            src/network/IPRandomizer.cpp \
            src/network/base64.cpp \
-           src/network/ProgressMonitor.cpp
+           src/network/ProgressMonitor.cpp \
+           src/network/ConfigManager.cpp \
+           src/network/NetworkMonitor.cpp
 
 HEADERS += src/network/Connector.h \
            src/network/Utils.h \
@@ -98,7 +100,9 @@ HEADERS += src/network/Connector.h \
            src/network/FileUpdater.h \
            src/network/IPRandomizer.h \
            src/network/base64.h \
-           src/network/ProgressMonitor.h
+           src/network/ProgressMonitor.h \
+           src/network/ConfigManager.h \
+           src/network/NetworkMonitor.h
 
 # UI components (optional, for GUI build)
 # Uncomment for GUI version:

@@ -32,6 +32,18 @@ public:
     // SNMP scanning
     static FingerprintResult checkSNMP(const char* ip, int port = 161);
     
+    // MikroTik RouterOS / Winbox detection
+    static FingerprintResult checkMikroTik(const char* ip, int port = 80);
+    
+    // Ubiquiti UniFi / AirOS detection
+    static FingerprintResult checkUbiquiti(const char* ip, int port = 80);
+    
+    // TP-Link device detection (routers, cameras, IoT)
+    static FingerprintResult checkTPLink(const char* ip, int port = 80);
+    
+    // IoT Smart Devices detection (smart bulbs, plugs, etc.)
+    static FingerprintResult checkIoTDevices(const char* ip, int port = 80);
+    
     // Comprehensive fingerprint scan
     static FingerprintResult scanDevice(const char* ip, int port);
     
