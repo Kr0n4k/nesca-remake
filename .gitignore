@@ -1,44 +1,75 @@
-*.swo
-*.swp
-debugData.txt
-*.png
-adns_dll.dll
-changelog
-*.obj
-*.res
-*.log
-*.tlog
-*.lastbuildstate
-*.pdb
-GeneratedFiles/*
-imp.txt
-imp2.txt
-*.dll
-logs/*
-*.vcxproj.*
-*.vcxproj
-*.aps
-*.svg
-Release/*
-Debug/*
-restore
-result_files/*
-*.bmp
-*.bk
-
-tags.txt
-lisca.cpp
-main - копия.cpp
-result_files-*
-*.BACKUP.*
-*.LOCAL.*
-*.REMOTE.*
-*.BASE.*
+# Build artifacts
 *.o
-nesca
-moc_*
-*~
-*.user
+*.a
+*.so
+*.dll
+*.exe
+*.obj
+*.pdb
+*.ilk
+*.exp
+*.lib
+*.dylib
+
+# Qt build files
 Makefile
-tmp/*
-qrc_nesca_3.cpp
+Makefile.*
+*.pro.user
+*.pro.user.*
+object_script.*
+moc_*.cpp
+moc_*.h
+qrc_*.cpp
+ui_*.h
+
+# Binaries
+nesca
+nesca.exe
+test_qt
+test_qt_modules
+
+# IDE files
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
+*.iml
+*.code-workspace
+
+# Build directories
+debug/
+release/
+build/
+.build/
+
+# Results and output
+results_*/
+export_*.json
+export_*.csv
+output.txt
+debugData.txt
+tempIPLst.bk
+restore
+
+# Test files
+test_*.txt
+test_*.cpp
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs
+*.log
+
+# Backup files
+*.bak
+*.backup
+*~
