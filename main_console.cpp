@@ -2,19 +2,16 @@
 #include "MainStarter.h"
 #include <QCoreApplication>
 #include <QTextStream>
-#include <QStringList>
 #include <iostream>
 #include <cstring>
 #include "externData.h"
 #include "Utils.h"
 
-// Initialize global stt object (will be used by other modules)
+// Initialize global stt object (defined in nesca_3.cpp, but we need it here too)
 STh *stt = nullptr;
 
-// Initialize globalScanFlag for console mode (other variables are defined in MainStarter.cpp and FileUpdater.cpp)
+// Initialize global scan flag
 bool globalScanFlag = false;
-
-// Note: jsonArr is already defined in MainStarter.cpp, don't define it here
 
 void printUsage(const char* progName) {
 	QTextStream out(stdout);
@@ -48,11 +45,6 @@ int main(int argc, char *argv[])
 	QString target;
 	QString ports = PORTSET;
 	QString tld = ".com";
-	
-	// Set default threads if not specified
-	if (gThreads == 0) {
-		gThreads = 100; // Default thread count
-	}
 	
 	// Parse command line arguments
 	for (int i = 1; i < argc; i++) {
@@ -182,4 +174,4 @@ int main(int argc, char *argv[])
 	
 	return 0;
 }
-	
+

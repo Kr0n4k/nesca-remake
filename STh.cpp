@@ -1,76 +1,119 @@
 #include "STh.h"
 #include "MainStarter.h"
+#include <iostream>
+#include <QTextStream>
+#include <QString>
 
+// Консольные версии методов для вывода в stdout/stderr
 //BA TablelistView
 void STh::doEmitionChangeBARow(int index, QString loginPass, QString percentage)
 {
-	emit stt->signalChangeBARow(index, loginPass, percentage);
+	QTextStream out(stdout);
+	out << "[BA] Row " << index << ": " << loginPass << " (" << percentage << "%)" << Qt::endl;
 }
 
 void STh::doEmitionShowRedVersion()
 {
-	emit stt->showRedVersion();	
+	QTextStream out(stdout);
+	out << "[VERSION] Red version notification" << Qt::endl;
 }
+
 void STh::doEmitionStartScanIP()
 {
-	emit stt->startScanIP();	
+	QTextStream out(stdout);
+	out << "[SCAN] Starting IP scan..." << Qt::endl;
 }
+
 void STh::doEmitionStartScanDNS()
 {
-	emit stt->startScanDNS();		
+	QTextStream out(stdout);
+	out << "[SCAN] Starting DNS scan..." << Qt::endl;
 }
+
 void STh::doEmitionStartScanImport()
 {
-	emit stt->startScanImport();		
+	QTextStream out(stdout);
+	out << "[SCAN] Starting import scan..." << Qt::endl;
 }
-void STh::doEmitionAddIncData(QString(ip), QString str)
+
+void STh::doEmitionAddIncData(QString ip, QString str)
 {
-	emit stt->sIncData(ip, str);
+	QTextStream out(stdout);
+	out << "[INC] " << ip << ": " << str << Qt::endl;
 }
-void STh::doEmitionAddOutData( QString str)
+
+void STh::doEmitionAddOutData(QString str)
 {
-	emit stt->sOutData(str);
+	QTextStream out(stdout);
+	out << "[OUT] " << str << Qt::endl;
 }
+
 void STh::doEmitionFoundData(QString str)
 {
-	emit stt->changeFoundData(str);
+	QTextStream out(stdout);
+	out << str << Qt::endl;
 }
 
 void STh::doEmitionRedFoundData(QString str)
 {
-	emit stt->changeRedFoundData(str);
+	QTextStream err(stderr);
+	err << "[ERROR] " << str << Qt::endl;
 }
+
 void STh::doEmitionGreenFoundData(QString str)
 {
-	emit stt->changeGreenFoundData(str);
+	QTextStream out(stdout);
+	out << "[OK] " << str << Qt::endl;
 }
+
 void STh::doEmitionFoundDataCustom(QString str, QString color)
 {
-	emit stt->foundDataCustom(str, color);
+	QTextStream out(stdout);
+	out << "[" << color << "] " << str << Qt::endl;
 }
+
 void STh::doEmitionYellowFoundData(QString str)
 {
-	emit stt->changeYellowFoundData(str);
+	QTextStream out(stdout);
+	out << "[WARN] " << str << Qt::endl;
 }
+
 void STh::doEmitionDebugFoundData(QString str)
 {
-	emit stt->changeDebugFoundData(str);
+	QTextStream out(stdout);
+	out << "[DEBUG] " << str << Qt::endl;
 }
+
 void STh::doEmitionKillSttThread()
 {
-	emit stt->killSttThread();	
+	QTextStream out(stdout);
+	out << "[SCAN] Stopping scan thread..." << Qt::endl;
 }
+
 void STh::doEmitionDataSaved(bool status)
 {
-    emit stt->signalDataSaved(status);
+	QTextStream out(stdout);
+	if (status) {
+		out << "[INFO] Data saved successfully" << Qt::endl;
+	}
 }
+
 void STh::doEmitionUpdateArc(unsigned long gTargets)
 {
-	emit stt->signalUpdateArc(gTargets);
+	QTextStream out(stdout);
+	out << "\r[PROGRESS] Targets remaining: " << gTargets;
+	out.flush();
 }
+
 void STh::doEmitionBlockButton(bool value)
 {
-	emit stt->signalBlockButton(value);
+	// В консольной версии не нужно блокировать кнопки
+	Q_UNUSED(value);
+}
+
+int STh::baModelSize()
+{
+	return 0; // В консольной версии не поддерживается
 }
 
 void STh::setMode(short mode) {

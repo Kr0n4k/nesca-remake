@@ -4,9 +4,16 @@
 #
 #-------------------------------------------------
 
-QT       += core gui multimedia
+QT       += core network
 
-greaterThan(QT_MAJOR_VERSION, 4): QT += widgets
+# QTextCodec support (needed for finder.cpp)
+# In Qt 5.15+ QTextCodec moved to core5compat
+# Try adding core5compat if available (for newer Qt), otherwise it should be in core
+exists($$[QT_INSTALL_LIBS]/libQt5Core5Compat.so) {
+    QT += core5compat
+}
+
+# Removed gui, multimedia, widgets for console-only application
 
 CONFIG += c++11
 QMAKE_CFLAGS += -Wno-write-strings 
@@ -17,20 +24,8 @@ TEMPLATE = app
 #INCLUDEPATH += /opt/Qt5.3.2/5.3/gcc_64/include/QtWidgets/
 SOURCES +=\
         main.cpp \
-    nesca_3.cpp \
-    ActivityDrawerTh_HorNet.cpp \
     base64.cpp \
-    CheckKey_Th.cpp \
-    DrawerTh_GridQoSScanner.cpp \
-    DrawerTh_HorNet.cpp \
-    DrawerTh_ME2Scanner.cpp \
-    DrawerTh_QoSScanner.cpp \
-    DrawerTh_VoiceScanner.cpp \
-    msgcheckerthread.cpp \
-    piestat.cpp \
-    progressbardrawer.cpp \
     STh.cpp \
-    vercheckerthread.cpp \
     finder.cpp \
     WebformWorker.cpp \
     Connector.cpp \
@@ -48,25 +43,27 @@ SOURCES +=\
     RTSP.cpp \
     IPCAuth.cpp
 
+# GUI files excluded for console build:
+#    nesca_3.cpp \
+#    ActivityDrawerTh_HorNet.cpp \
+#    CheckKey_Th.cpp \
+#    DrawerTh_GridQoSScanner.cpp \
+#    DrawerTh_HorNet.cpp \
+#    DrawerTh_ME2Scanner.cpp \
+#    DrawerTh_QoSScanner.cpp \
+#    DrawerTh_VoiceScanner.cpp \
+#    msgcheckerthread.cpp \
+#    piestat.cpp \
+#    progressbardrawer.cpp \
+#    vercheckerthread.cpp
 
-HEADERS  += nesca_3.h \
-    ActivityDrawerTh_HorNet.h \
-    base64.h \
-    CheckKey_Th.h \
-    DrawerTh_GridQoSScanner.h \
-    DrawerTh_HorNet.h \
-    DrawerTh_ME2Scanner.h \
-    DrawerTh_QoSScanner.h \
-    DrawerTh_VoiceScanner.h \
+
+HEADERS  += base64.h \
     externData.h \
     externFunctions.h \
     mainResources.h \
-    msgcheckerthread.h \
-    piestat.h \
-    progressbardrawer.h \
     resource.h \
     STh.h \
-    vercheckerthread.h \
     Utils.h \
     WebformWorker.h \
     Connector.h \
@@ -83,10 +80,26 @@ HEADERS  += nesca_3.h \
     RTSP.h \
     IPCAuth.h
 
-FORMS    += nesca_3.ui
+# GUI headers excluded for console build:
+#    nesca_3.h \
+#    ActivityDrawerTh_HorNet.h \
+#    CheckKey_Th.h \
+#    DrawerTh_GridQoSScanner.h \
+#    DrawerTh_HorNet.h \
+#    DrawerTh_ME2Scanner.h \
+#    DrawerTh_QoSScanner.h \
+#    DrawerTh_VoiceScanner.h \
+#    msgcheckerthread.h \
+#    piestat.h \
+#    progressbardrawer.h \
+#    vercheckerthread.h
 
-RESOURCES += \
-    nesca_3.qrc
+# FORMS removed - no GUI forms needed for console application
+# FORMS    += nesca_3.ui
+
+# RESOURCES removed - UI resources not needed for console
+# RESOURCES += \
+#     nesca_3.qrc
 
 OTHER_FILES += \
     nesca_3.rc

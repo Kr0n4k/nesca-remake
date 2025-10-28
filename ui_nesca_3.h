@@ -219,7 +219,7 @@ public:
         threadLine->setGeometry(QRect(110, 80, 51, 20));
         threadLine->setFont(font);
         threadLine->setStyleSheet(QString::fromUtf8("color: rgb(216, 216, 216);background-color: rgb(56, 56, 56);border:none;"));
-        threadLine->setMaxLength(3);
+        threadLine->setMaxLength(4);
         threadLine->setAlignment(Qt::AlignCenter);
         labelIPRange = new QLabel(tab_4);
         labelIPRange->setObjectName(QString::fromUtf8("labelIPRange"));
@@ -253,7 +253,7 @@ public:
         iptoLine_value->setGeometry(QRect(280, 80, 51, 20));
         iptoLine_value->setFont(font);
         iptoLine_value->setStyleSheet(QString::fromUtf8("color: rgb(216, 216, 216);background-color: rgb(56, 56, 56);border:none;"));
-        iptoLine_value->setMaxLength(3);
+        iptoLine_value->setMaxLength(4);
         iptoLine_value->setAlignment(Qt::AlignCenter);
         restoreDefaultPorts1 = new QPushButton(tab_4);
         restoreDefaultPorts1->setObjectName(QString::fromUtf8("restoreDefaultPorts1"));
@@ -294,7 +294,7 @@ public:
         lineEditThread->setGeometry(QRect(110, 80, 51, 20));
         lineEditThread->setFont(font);
         lineEditThread->setStyleSheet(QString::fromUtf8("color: rgb(216, 216, 216);background-color: rgb(56, 56, 56);"));
-        lineEditThread->setMaxLength(3);
+        lineEditThread->setMaxLength(4);
         lineEditThread->setAlignment(Qt::AlignCenter);
         labelDNSRange = new QLabel(tab_5);
         labelDNSRange->setObjectName(QString::fromUtf8("labelDNSRange"));
@@ -321,7 +321,7 @@ public:
         iptoLine_value_2->setGeometry(QRect(280, 80, 51, 20));
         iptoLine_value_2->setFont(font);
         iptoLine_value_2->setStyleSheet(QString::fromUtf8("color: rgb(216, 216, 216);background-color: rgb(56, 56, 56);border:none;"));
-        iptoLine_value_2->setMaxLength(3);
+        iptoLine_value_2->setMaxLength(4);
         iptoLine_value_2->setAlignment(Qt::AlignCenter);
         restoreDefaultPorts2 = new QPushButton(tab_5);
         restoreDefaultPorts2->setObjectName(QString::fromUtf8("restoreDefaultPorts2"));
@@ -355,7 +355,7 @@ public:
         importThreads->setGeometry(QRect(110, 80, 51, 20));
         importThreads->setFont(font);
         importThreads->setStyleSheet(QString::fromUtf8("color: rgb(216, 216, 216);background-color: rgb(56, 56, 56);"));
-        importThreads->setMaxLength(3);
+        importThreads->setMaxLength(4);
         importThreads->setAlignment(Qt::AlignCenter);
         importPortLine = new QLineEdit(tab_6);
         importPortLine->setObjectName(QString::fromUtf8("importPortLine"));
@@ -382,7 +382,7 @@ public:
         iptoLine_value_3->setGeometry(QRect(280, 80, 51, 20));
         iptoLine_value_3->setFont(font);
         iptoLine_value_3->setStyleSheet(QString::fromUtf8("color: rgb(216, 216, 216);background-color: rgb(56, 56, 56);border:none;"));
-        iptoLine_value_3->setMaxLength(3);
+        iptoLine_value_3->setMaxLength(4);
         iptoLine_value_3->setAlignment(Qt::AlignCenter);
         restoreDefaultPorts3 = new QPushButton(tab_6);
         restoreDefaultPorts3->setObjectName(QString::fromUtf8("restoreDefaultPorts3"));

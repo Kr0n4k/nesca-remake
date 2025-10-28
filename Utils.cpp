@@ -60,7 +60,11 @@ std::string Utils::getStartDate() {
 int Utils::addBARow(QString str1, QString str2, QString str3, int rowIndex) {
 	if (BALogSwitched) {
 		if (rowIndex == -1) {
-			rowIndex = nesca_3::addBARow(str1, str2, str3);
+			// In console mode, just output the row and return 0
+			if (stt) {
+				stt->doEmitionChangeBARow(0, str2, str3);
+			}
+			rowIndex = 0;
 		}
 		else {
 			stt->doEmitionChangeBARow(rowIndex, str2, str3);

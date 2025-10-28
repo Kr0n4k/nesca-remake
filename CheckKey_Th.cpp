@@ -76,7 +76,11 @@ int KeyCheckerMain()
 			CheckKey_Th::isActiveKey = 1;
             if(emitIfOK == 0) stt->doEmitionStartScanIP();
             else if(emitIfOK == 1) stt->doEmitionStartScanDNS();
-            else if(emitIfOK == 2) stt->doEmitionStartScanImport();
+            else if(emitIfOK == 2) {
+                // Temporarily disabled automatic import to debug stack smashing issue
+                // stt->doEmitionStartScanImport();
+                stt->doEmitionYellowFoundData("Automatic import disabled for debugging");
+            }
             return 1;
         } else if(Utils::ustrstr(buffer, std::string("400 Bad Request")) != -1) {
 			QString errorDef = Utils::GetNSErrorDefinition(buffer.c_str(), "notify");

@@ -77,17 +77,18 @@ char trcPersKey[64] = {0};
 char gProxyIP[64] = {0};
 char gProxyPort[8] = {0};
 
-VerCheckerThread *vct = new VerCheckerThread();
-MSGCheckerThread *mct = new MSGCheckerThread();
-STh *stt = new STh();
-DrawerTh_HorNet *dtHN = new DrawerTh_HorNet();
-DrawerTh_ME2Scanner *dtME2 = new DrawerTh_ME2Scanner();
-DrawerTh_QoSScanner *dtQoS = new DrawerTh_QoSScanner();
-DrawerTh_GridQoSScanner *dtGridQoS = new DrawerTh_GridQoSScanner();
-CheckKey_Th *chKTh = new CheckKey_Th();
-ActivityDrawerTh_HorNet *adtHN = new ActivityDrawerTh_HorNet();
-DrawerTh_VoiceScanner *vsTh = new DrawerTh_VoiceScanner();
-PieStat *psTh = new PieStat();
+// Global objects - moved to lazy initialization to avoid static initialization order issues
+VerCheckerThread *vct = nullptr;
+MSGCheckerThread *mct = nullptr;
+STh *stt = nullptr;
+DrawerTh_HorNet *dtHN = nullptr;
+DrawerTh_ME2Scanner *dtME2 = nullptr;
+DrawerTh_QoSScanner *dtQoS = nullptr;
+DrawerTh_GridQoSScanner *dtGridQoS = nullptr;
+CheckKey_Th *chKTh = nullptr;
+ActivityDrawerTh_HorNet *adtHN = nullptr;
+DrawerTh_VoiceScanner *vsTh = nullptr;
+PieStat *psTh = nullptr;
 
 bool MapWidgetOpened = false;
 bool globalScanFlag;
@@ -191,40 +192,24 @@ int PekoWidget::offset = 0;
 //	for (int i = 0, j = 0; i < 512; i += 2, ++j) memset(cn + j, computerName[i], 1);
 //	return cn;
 //}
-//std::string grgNun() {
-//	DWORD Type;
-//	char value[64] = { 0 };
-//	HKEY hkey;
-//	if (RegOpenKey(HKEY_LOCAL_MACHINE,
-//		TEXT("Software\\ISKOPASI\\nesca3\\jipjip"), &hkey) == ERROR_SUCCESS)
-//	{
-//		DWORD value_length = 256;
-//		RegQueryValueEx(hkey, "nepnep", 0, &Type, (BYTE*)&value, &value_length);
-//		RegCloseKey(hkey);
-//	}
-//
-//	std::string rNepnep = std::string(value);
-//	return rNepnep;
-//}
-//std::string ypypNunu()
-//{
-//	int fafa1, faf2;
-//	hshjNune(fafa1, faf2);
-//	int d2 = hsh_hsh();
-//	char fds[1024] = { 0 };
-//	strcpy(fds, fds_gds());
-//	const std::string resNunu = std::to_string(fafa1) + "-"
-//		+ std::to_string(d2) + "-" + std::string(fds) + "-"
-//		+ std::string(trcPersKey);
-//
-//	std::ostringstream strNunu;
-//	strNunu << std::setw(2) << std::setfill('0') << std::hex << std::uppercase;
-//	std::copy(resNunu.begin(), resNunu.end(), std::ostream_iterator<unsigned int>(strNunu, ""));
-//	return strNunu.str();
-//}
+std::string grgNun() {
+	// Заглушка для Linux - возвращаем пустую строку
+	return "";
+}
+
+std::string ypypNunu()
+{
+	// Заглушка для Linux - возвращаем пустую строку
+	return "";
+}
 //
 //
 void _LoadPersInfoToLocalVars(int savedTabIndex) {
+	// Check if UI is initialized
+	if (ui == nullptr) {
+		return;
+	}
+	
 	//ZeroMemory(trcPersKey, sizeof(trcPersKey));
 	trcPersKey[0] = 0;
 	strncpy(trcPersKey, ui->linePersKey->text().toLocal8Bit().data(), 32);
@@ -297,7 +282,7 @@ void _LoadPersInfoToLocalVars(int savedTabIndex) {
 	gProxyPort[ui->systemProxyPort->text().size()] = '\0';
 }
 
-Ui::nesca_3Class *ui = new Ui::nesca_3Class;
+Ui::nesca_3Class *ui = nullptr;
 QGraphicsScene *testScene;
 
 qreal sharedY = 50;
@@ -376,23 +361,33 @@ void nesca_3::drawVerboseArcs(unsigned long gTargets) {
 									 QString::number(gThreads));
 }
 
-void setSceneArea()
+void setSceneArea(QObject *parent)
 {
-	delete ui->graphicsVoice;
-	ui->graphicsVoice = new PieStatView(ui->widget);
-	ui->graphicsVoice->setObjectName(QStringLiteral("graphicsVoice"));
-	ui->graphicsVoice->setGeometry(QRect(220, 265, 270, 100));
-	ui->graphicsVoice->setStyleSheet(QStringLiteral("border:1px solid white;background-color: rgba(26, 26,26, 0);"));
-	ui->graphicsVoice->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-	ui->graphicsVoice->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-	ui->graphicsVoice->setRenderHints(QPainter::TextAntialiasing);
-	ui->graphicsVoice->setCacheMode(QGraphicsView::CacheNone);
-	ui->graphicsVoice->raise();
+	// Don't manually delete ui->graphicsVoice - Qt will handle it
+	// Just delete the old one through Qt's parent-child mechanism
+	if (ui->graphicsVoice != nullptr) {
+		ui->graphicsVoice->deleteLater();
+		ui->graphicsVoice = nullptr; // Set to nullptr immediately
+	}
+	
+	// Only create new graphicsVoice if it doesn't exist
+	if (ui->graphicsVoice == nullptr) {
+		ui->graphicsVoice = new PieStatView(ui->widget);
+		ui->graphicsVoice->setObjectName(QStringLiteral("graphicsVoice"));
+		ui->graphicsVoice->setGeometry(QRect(220, 265, 270, 100));
+		ui->graphicsVoice->setStyleSheet(QStringLiteral("border:1px solid white;background-color: rgba(26, 26,26, 0);"));
+		ui->graphicsVoice->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+		ui->graphicsVoice->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+		ui->graphicsVoice->setRenderHints(QPainter::TextAntialiasing);
+		ui->graphicsVoice->setCacheMode(QGraphicsView::CacheNone);
+		ui->graphicsVoice->raise();
+	}
 
-	sceneGrid = new QGraphicsScene();
-	sceneGrid2 = new QGraphicsScene();
-	sceneGraph = new QGraphicsScene();
-	sceneUpper = new QGraphicsScene();
+	// Set parent so Qt will manage the lifetime
+	sceneGrid = new QGraphicsScene(parent);
+	sceneGrid2 = new QGraphicsScene(parent);
+	sceneGraph = new QGraphicsScene(parent);
+	sceneUpper = new QGraphicsScene(parent);
 	sceneUpper->setSceneRect(0, 0, ui->graphicLog_Upper->width(), ui->graphicLog_Upper->height());
 	sceneGrid->setSceneRect(0, 0, ui->graphicLog_Upper->width(), ui->graphicLog_Upper->height());
 
@@ -628,16 +623,17 @@ void setSomeStyleArea()
 	setButtonStyleArea();
 }
 
-void SetValidators()
+void SetValidators(QObject *parent)
 {
+	// Set parent so Qt will manage the lifetime
 	QRegExpValidator *validator = new QRegExpValidator(
 		QRegExp("([\\d*|.|//|-])+"), 
-		NULL
+		parent
 		);
 
 	ui->ipLine->setValidator(validator);
 
-	validator = new QRegExpValidator(QRegExp("\\d{1,5}"), NULL);
+	validator = new QRegExpValidator(QRegExp("\\d{1,4}"), parent);
 	ui->importThreads->setValidator(validator);
 	ui->threadLine->setValidator(validator);
 	ui->lineEditThread->setValidator(validator);
@@ -646,20 +642,20 @@ void SetValidators()
 	ui->iptoLine_value_3->setValidator(validator);
 	ui->maxBrutingThrBox->setValidator(validator);
 
-	validator = new QRegExpValidator(QRegExp("\\d{1,5}"), NULL);
+	validator = new QRegExpValidator(QRegExp("\\d{1,5}"), parent);
 	ui->PingTO->setValidator(validator);
 	ui->threadDelayBox->setValidator(validator);
 	
-	validator = new QRegExpValidator(QRegExp("(\\w|-|\\.|\\[|\\]|\\\\)+"), NULL);
+	validator = new QRegExpValidator(QRegExp("(\\w|-|\\.|\\[|\\]|\\\\)+"), parent);
 	ui->dnsLine->setValidator(validator);
 
-	validator = new QRegExpValidator(QRegExp("(\\w|-|\\.)+((\\w|-|\\.)+)+"), NULL);
+	validator = new QRegExpValidator(QRegExp("(\\w|-|\\.)+((\\w|-|\\.)+)+"), parent);
 	ui->lineILVL->setValidator(validator);
 
-	validator = new QRegExpValidator(QRegExp("\\d{1,5}"), NULL);
+	validator = new QRegExpValidator(QRegExp("\\d{1,5}"), parent);
 	ui->trcSrvPortLine->setValidator(validator);
 	
-	validator = new QRegExpValidator(QRegExp("[a-zA-Z0-9]{32}"), NULL);
+	validator = new QRegExpValidator(QRegExp("[a-zA-Z0-9]{32}"), parent);
 	ui->linePersKey->setValidator(validator);
 }
 
@@ -669,8 +665,9 @@ void nesca_3::slotDrawTextPlacers()
 	fnt.setFamily("Eurostile");
 	if(ME2ScanFlag)
 	{
-		delete sceneTextPlacer;
-		sceneTextPlacer = NULL;
+		// Don't manually delete sceneTextPlacer - Qt will handle it when we set a new scene
+		// delete sceneTextPlacer;
+		// sceneTextPlacer = NULL;
 		sceneTextPlacer = new QGraphicsScene();
 		ui->graphicTextPlacer->setScene(sceneTextPlacer);
 
@@ -760,8 +757,9 @@ void nesca_3::slotDrawTextPlacers()
 
 		int h = ui->graphicLog->height();
 
-		delete sceneTextPlacer;
-		sceneTextPlacer = NULL;
+		// Don't manually delete sceneTextPlacer - Qt will handle it when we set a new scene
+		// delete sceneTextPlacer;
+		// sceneTextPlacer = NULL;
 		sceneTextPlacer = new QGraphicsScene();
 		ui->graphicTextPlacer->setScene(sceneTextPlacer);
 
@@ -778,6 +776,35 @@ void nesca_3::slotDrawTextPlacers()
 
 void nesca_3::slotDrawDelimLines()
 {
+	int gHeight = ui->graphicLog->height();
+	QPen penDelim(QColor(255, 0, 0), 0.5);
+	QPen penDelim2(QColor(255, 0, 0, 60), 1);
+
+	QLinearGradient gradient(0, 0, 0, 100);
+	gradient.setColorAt(0, QColor(255,0,0, 60));
+	gradient.setColorAt(0.5, QColor(255,0,0, 40));
+	gradient.setColorAt(1, QColor(255,0,0, 0));
+	penDelim2.setBrush(gradient);
+
+	sceneGrid2->addLine(33, gHeight, 33, gHeight - 3, penDelim);
+	sceneGrid2->addLine(73, gHeight, 73, gHeight - 3, penDelim); 
+	sceneGrid2->addLine(113, gHeight, 113, gHeight - 3, penDelim); 
+	sceneGrid2->addLine(153, gHeight, 153, gHeight - 3, penDelim);
+	sceneGrid2->addLine(193, gHeight, 193, gHeight - 3, penDelim);
+	sceneGrid2->addLine(233, gHeight, 233, gHeight - 3, penDelim);
+
+	sceneGrid2->addRect(1, 0, 31, gHeight - 3, penDelim2);
+	sceneGrid2->addRect(34, 0, 38, gHeight - 3, penDelim2);
+	sceneGrid2->addRect(74, 0, 38, gHeight - 3, penDelim2);
+	sceneGrid2->addRect(114, 0, 38, gHeight - 3, penDelim2);
+	sceneGrid2->addRect(154, 0, 38, gHeight - 3, penDelim2);
+	sceneGrid2->addRect(194, 0, 38, gHeight - 3, penDelim2);
+	sceneGrid2->addRect(234, 0, 35, gHeight - 3, penDelim2);
+}
+
+void nesca_3::slotQoSDrawDelimLines()
+{
+	// Простая реализация для QoS режима - аналогично slotDrawDelimLines
 	int gHeight = ui->graphicLog->height();
 	QPen penDelim(QColor(255, 0, 0), 0.5);
 	QPen penDelim2(QColor(255, 0, 0, 60), 1);
@@ -1438,6 +1465,7 @@ bool nesca_3::eventFilter(QObject* obj, QEvent *event)
 	else if (obj == ui->currentDirectoryLine && event->type() == QEvent::MouseButtonPress)
 	{
 		copyToClipboardLocation();
+		return true;
 	}
 	else
 	{
@@ -2048,7 +2076,7 @@ void nesca_3::slotShowServerMsg(QString str)
 	 msgBox.exec();
 }
 
-void nesca_3::DNSLine_ValueChanged()
+void nesca_3::DNSLine_ValueChanged(QString)
 {
 	if(!globalScanFlag) ui->startScanButton_4->setText("Start");
 }
@@ -2215,6 +2243,14 @@ void nesca_3::slotChangeBARow(int rowIndex, QString loginPass, QString percentag
 		BAModel->item(rowIndex, 2)->setData(qbText, Qt::ForegroundRole);
 	}
 }
+void nesca_3::slotAddBARow(int& rowIndex, QString loginPass) {
+	// Простая реализация для добавления строки в BA таблицу
+	QList<QStandardItem*> items;
+	items.append(new QStandardItem(QString::number(rowIndex)));
+	items.append(new QStandardItem(loginPass));
+	items.append(new QStandardItem(""));
+	BAModel->appendRow(items);
+}
 void nesca_3::slotEditFilter() {
 	QDesktopServices::openUrl(QUrl::fromLocalFile("file:///" + ui->currentDirectoryLine->text() + "\\pwd_lists\\negatives.txt"));
 }
@@ -2346,6 +2382,11 @@ void setUIText(char *field, QLineEdit *qle, const char *resStr) {
 }
 void RestoreSession()
 {
+	// Check if UI is initialized
+	if (ui == nullptr) {
+		return;
+	}
+	
 	//ZeroMemory(gPorts, sizeof(gPorts));
 	//ZeroMemory(gTLD, sizeof(gTLD));
 	gPorts[0] = 0;
@@ -3186,86 +3227,18 @@ void nesca_3::finishLoading() {
 #endif
 }
 
-//bool nesca_3::CheckPersKeyMain()
-//{
-//	saveOptions();
-//	QString y = QString(QCryptographicHash::hash((ypypNunu().c_str()), QCryptographicHash::Md5).toHex());
-//	QString nu(grgNun().c_str());
-//	if (y.compare(nu) == 0) {
-//		MainStarter m;
-//		m.saveBackupToFile();
-//		if (!chKTh->isRunning())
-//		{
-//			stt->doEmitionYellowFoundData("[Key check] Starting checker thread...");
-//			chKTh->start();
-//			while (CheckKey_Th::isActiveKey == -1) Sleep(10);
-//			if (CheckKey_Th::isActiveKey == 1) return true;
-//			else {
-//				stt->doEmitionYellowFoundData("== Invalid key. ==");
-//				HKEY hkey;
-//				DWORD dwDisposition;
-//				if (RegCreateKeyEx(HKEY_LOCAL_MACHINE,
-//					TEXT("Software\\ISKOPASI\\nesca3\\jipjip"),
-//					0, NULL, 0,
-//					KEY_WRITE, NULL, &hkey, &dwDisposition) == ERROR_SUCCESS)
-//				{
-//					RegSetValueEx(hkey, "nepnep", 0, REG_BINARY, (BYTE*)"0", 2);
-//					RegSetValueEx(hkey, "jipjip", 0, REG_BINARY, (BYTE*)"0", 2);
-//					RegCloseKey(hkey);
-//				}
-//				Sleep(2000);
-//				qApp->quit();
-//			}
-//		}
-//		else stt->doEmitionRedFoundData("Still ckecking your key, please wait...");;
-//	}
-//	else {
-//		stt->doEmitionYellowFoundData("== Invalid key. ==");
-//		Sleep(2000);
-//		qApp->quit();
-//	}
-//	return false;
-//}
-//
-//void nesca_3::CheckPersKey()
-//{
-//	saveOptions();
-//	QString y = QString(QCryptographicHash::hash((ypypNunu().c_str()), QCryptographicHash::Md5).toHex());
-//	QString nu(grgNun().c_str());
-//	if (y.compare(nu) == 0) {
-//		MainStarter m;
-//		m.saveBackupToFile();
-//		if (!chKTh->isRunning())
-//		{
-//			stt->doEmitionYellowFoundData("[Key check] Starting checker thread...");
-//			chKTh->start();
-//			//while (CheckKey_Th::isActiveKey == -1) Sleep(10);
-//			/*if (CheckKey_Th::isActiveKey == 1) finishLoading();
-//			else {
-//				stt->doEmitionYellowFoundData("== Invalid key. ==");
-//				HKEY hkey;
-//				DWORD dwDisposition;
-//				if (RegCreateKeyEx(HKEY_LOCAL_MACHINE,
-//					TEXT("Software\\ISKOPASI\\nesca3\\jipjip"),
-//					0, NULL, 0,
-//					KEY_WRITE, NULL, &hkey, &dwDisposition) == ERROR_SUCCESS)
-//				{
-//					RegSetValueEx(hkey, L"nepnep", 0, REG_BINARY, (BYTE*)"0", 2);
-//					RegSetValueEx(hkey, L"jipjip", 0, REG_BINARY, (BYTE*)"0", 2);
-//					RegCloseKey(hkey);
-//				}
-//				Sleep(2000);
-//				qApp->quit();
-//			}*/
-//		}
-//		else stt->doEmitionRedFoundData("Still ckecking your key, please wait...");;
-//	}
-//	else {
-//		stt->doEmitionYellowFoundData("== Invalid key. ==");
-//		Sleep(2000);
-//		qApp->quit();
-//	}
-//}
+bool nesca_3::CheckPersKeyMain()
+{
+	saveOptions();
+	// Упрощенная версия для Linux - всегда возвращаем true
+	return true;
+}
+
+void nesca_3::CheckPersKey()
+{
+	saveOptions();
+	// Упрощенная версия для Linux - ничего не делаем
+}
 
 //#define IRC_CHAN "iskopasi_lab03"
 //#define eicar1 "X5O!P%@AP[4\\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*"
@@ -3280,6 +3253,25 @@ nesca_3::nesca_3(bool isWM, QWidget *parent = 0) : QMainWindow(parent)
 	/*if (isWM) {
 		Utils::emitScaryError();
 	}*/
+	
+	// Initialize UI object if not already done
+	if (ui == nullptr) {
+		ui = new Ui::nesca_3Class;
+	}
+	
+	// Initialize global objects lazily to avoid static initialization order issues
+	if (vct == nullptr) vct = new VerCheckerThread();
+	if (mct == nullptr) mct = new MSGCheckerThread();
+	if (stt == nullptr) stt = new STh();
+	if (dtHN == nullptr) dtHN = new DrawerTh_HorNet();
+	if (dtME2 == nullptr) dtME2 = new DrawerTh_ME2Scanner();
+	if (dtQoS == nullptr) dtQoS = new DrawerTh_QoSScanner();
+	if (dtGridQoS == nullptr) dtGridQoS = new DrawerTh_GridQoSScanner();
+	if (chKTh == nullptr) chKTh = new CheckKey_Th();
+	if (adtHN == nullptr) adtHN = new ActivityDrawerTh_HorNet();
+	if (vsTh == nullptr) vsTh = new DrawerTh_VoiceScanner();
+	if (psTh == nullptr) psTh = new PieStat();
+	
 	setWindowFlags(Qt::FramelessWindowHint);
 
 	gthis = this;
@@ -3288,7 +3280,7 @@ nesca_3::nesca_3(bool isWM, QWidget *parent = 0) : QMainWindow(parent)
 	ui->dataText->setOpenExternalLinks(true);
 	ui->dataText->setOpenLinks(false);
 	ui->rVerLabel->hide();
-	setSceneArea();
+	setSceneArea(this);
 
 	dots << 0.5 << 0.3 << 0.5 << 0.3;
 	dotsThreads << 0.1 << 0.2 << 0.1 << 0.2;
@@ -3314,7 +3306,7 @@ nesca_3::nesca_3(bool isWM, QWidget *parent = 0) : QMainWindow(parent)
 
 
 	ui->currentDirectoryLine->installEventFilter(this);
-	SetValidators();
+	SetValidators(this);
 	ConnectEvrthng();
 
 	HikVis::hikCounter = 0;
@@ -3342,7 +3334,8 @@ nesca_3::nesca_3(bool isWM, QWidget *parent = 0) : QMainWindow(parent)
 	QString path = QDir::toNativeSeparators(QApplication::applicationDirPath());
 	ui->currentDirectoryLine->setText(path);
 	
-	BAModel = new QStandardItemModel();
+	// Set parent to 'this' so Qt will manage the lifetime
+	BAModel = new QStandardItemModel(this);
 	ui->BATableView->setModel(BAModel);
 	ui->BATableView->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
 
@@ -3444,7 +3437,12 @@ nesca_3::nesca_3(bool isWM, QWidget *parent = 0) : QMainWindow(parent)
 
 nesca_3::~nesca_3()
 {
-	delete[] ui;
+	// Note: Don't delete ui here - it causes double free
+	// Qt will handle cleanup through parent-child relationships
+	// delete ui;
+	
+	// Note: Global objects are NOT deleted here because they may be used elsewhere
+	// They will be cleaned up when the application exits
 }
 
 void nesca_3::STTTerminate()

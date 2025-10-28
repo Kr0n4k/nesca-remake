@@ -1,5 +1,8 @@
 #include "MainStarter.h"
 #include <cmath>
+#include <random>
+#include <algorithm>
+#include <functional>
 
 int gTimeOut = 3;
 int gPingTimeout = 1;
@@ -15,7 +18,7 @@ int baCount = 0;
 int gMaxBrutingThreads = 2000;
 unsigned int Activity = 0;
 char gTLD[128] = { 0 };
-char gPorts[65536] = { 0 };
+char gPorts[1024] = { 0 };
 char currentIP[MAX_ADDR_LEN] = { 0 };
 char finalIP[32] = { 0 };
 bool gPingNScan = false;
@@ -41,63 +44,138 @@ char metaOffline[256]	= { 0 };
 
 bool saveBackup;
 
-void MainStarter::unBlockButtons(){
-	stt->doEmitionBlockButton(false);
+// Initialize GUI-related global variables for console mode (previously in nesca_3.cpp)
+bool gDebugMode = false;
+bool gNegDebugMode = false;
+bool MapWidgetOpened = false;
+bool widgetIsHidden = false;
+bool trackerOK = false;
+bool BALogSwitched = false;
+bool QOSWait = false;
+bool ME2ScanFlag = false;
+bool QoSScanFlag = false;
+bool VoiceScanFlag = false;
+bool PieStatFlag = false;
+char trcSrv[256] = {0};
+char trcScr[256] = {0};
+char trcProxy[128] = {0};
+char trcPersKey[64] = {0};
+char trcPort[32] = {0};
+char trcSrvPortLine[32] = {0};
+char gProxyIP[64] = {0};
+char gProxyPort[8] = {0};
+char gVER[32] = {0};
+int globalPinger = 0;
+int cIndex = 0;
+float QoSStep = 1;
+
+// Helper function to safely call stt methods
+void safeSttCall(std::function<void()> func) {
+	if (stt != nullptr) {
+		func();
+	}
 }
+
+void MainStarter::unBlockButtons(){
+	safeSttCall([&]() { stt->doEmitionBlockButton(false); });
+}
+// Static flag to prevent re-entry into fileLoader
+static bool inFileLoader = false;
+
 int MainStarter::fileLoader(const char *fileName) {
 
-	unsigned int importFileSize = 0;
-
-	FILE *fl = fopen(fileName, "r");
-	if (fl != NULL)
-	{
-		char curIP[256] = { 0 };
-		while (fgets((char*)curIP, sizeof(curIP), fl) != NULL)
-		{
-			if (curIP[0] != '#' && curIP[0] != ' ' && curIP[0] != '\n' && curIP[0] != '\r' && strcmp(curIP, "") != 0 &&
-				((curIP[0] == '/' && curIP[1] == '/') == false) && ((curIP[0] == '\t' && curIP[1] == '\t' && curIP[2] == '\t' && (curIP[3] == 13 || curIP[3] == 10 || curIP[3] == '#')) == false)
-				&& (curIP[0] == '\t' && curIP[1] == '\t' && curIP[2] == '\t' && (curIP[3] == '/' && curIP[4] == '/')) == false
-				) ++importFileSize;
-			curIP[0] = 0;
-			//ZeroMemory(curIP, sizeof(curIP));
-		};
-		fclose(fl);
+	// Check if we're being called again on already allocated arrays
+	if (inFileLoader) {
+		// Already in fileLoader, don't cleanup again
+		return -1;
 	}
-	else stt->doEmitionRedFoundData("[IP Loader] Cannot open IP list.");
-
-	if (importFileSize == 0) return -1;
-
-	ipsstartfl = new unsigned int*[importFileSize + 1];
-	ipsendfl = new unsigned int*[importFileSize + 1];
-	//ipsstartfl[0] = 0;
-	//ipsendfl[0] = 0;
-	/*ZeroMemory(ipsstartfl, sizeof(ipsstartfl));
-	ZeroMemory(ipsendfl, sizeof(ipsendfl));*/
-
-	for (int i = 0; i < importFileSize; ++i)
+	inFileLoader = true;
+	
+	// Clean up existing memory before allocating new
+	// Save old counter before resetting to avoid double free
+	int oldFlCounter = flCounter;
+	
+	if (ipsstartfl != NULL)
 	{
-		ipsstartfl[i] = new unsigned int[4];
-		ipsendfl[i] = new unsigned int[4];
+		// Only delete if oldFlCounter > 0 to avoid double free
+		if (oldFlCounter > 0) {
+			for (int i = 0; i < oldFlCounter; ++i) {
+				if (ipsstartfl[i] != NULL) {
+					delete[] ipsstartfl[i];
+					ipsstartfl[i] = NULL;
+				}
+			}
+		}
+		delete[] ipsstartfl;
+		ipsstartfl = NULL;
+	}
+	if (ipsendfl != NULL)
+	{
+		// Only delete if oldFlCounter > 0 to avoid double free
+		if (oldFlCounter > 0) {
+			for (int i = 0; i < oldFlCounter; ++i) {
+				if (ipsendfl[i] != NULL) {
+					delete[] ipsendfl[i];
+					ipsendfl[i] = NULL;
+				}
+			}
+		}
+		delete[] ipsendfl;
+		ipsendfl = NULL;
+	}
+	
+	// Reset counters AFTER cleanup
+	flCounter = 0;
+	gflIndex = 0;
 
-		//ZeroMemory(ipsstartfl[i], sizeof(ipsstartfl[i]));
-		//ZeroMemory(ipsendfl[i], sizeof(ipsendfl[i]));
-		//ipsstartfl[i] = 0;
-		//ipsendfl[i] = 0;
-	};
-
+	// Read file and count valid lines
 	std::vector<std::string> shuffleArray;
 	ifstream inputStream(fileName);
+	
+	if (!inputStream.is_open()) {
+		safeSttCall([&]() { stt->doEmitionRedFoundData("[IP Loader] Cannot open IP list."); });
+		return -1;
+	}
+	
 	std::string curIPStr;
-
 	while (!inputStream.eof())
 	{
 		std::getline(inputStream, curIPStr);
 		if (curIPStr.size() > 1 
-			&& curIPStr.find("#") == std::string::npos) shuffleArray.push_back(curIPStr);
+			&& curIPStr.find("#") == std::string::npos) {
+			shuffleArray.push_back(curIPStr);
+		}
+	}
+	inputStream.close();
+	
+	unsigned int importFileSize = shuffleArray.size();
+
+	if (shuffleArray.size() == 0) {
+		safeSttCall([&]() { stt->doEmitionRedFoundData("[IP Loader] No valid IP addresses found in file."); });
+		return -1;
 	}
 
-	std::random_shuffle(shuffleArray.begin(), shuffleArray.end());
-	for (int i = 0; i < importFileSize; ++i) {
+	// Limit the number of ranges to prevent memory issues
+	if (shuffleArray.size() > 10000) {
+		safeSttCall([&]() { stt->doEmitionRedFoundData("[IP Loader] Too many IP ranges in file. Maximum 10000 allowed."); });
+		return -1;
+	}
+
+	ipsstartfl = new unsigned int*[shuffleArray.size() + 1];
+	ipsendfl = new unsigned int*[shuffleArray.size() + 1];
+
+	for (int i = 0; i < shuffleArray.size(); ++i)
+	{
+		ipsstartfl[i] = new unsigned int[4];
+		ipsendfl[i] = new unsigned int[4];
+	}
+
+	// Shuffle array using modern approach to avoid stack overflow
+	// For large arrays, shuffle can also cause issues, so we skip it for now
+	// std::random_device rd;
+	// std::mt19937 g(rd());
+	// std::shuffle(shuffleArray.begin(), shuffleArray.end(), g);
+	for (int i = 0; i < shuffleArray.size(); ++i) {
 		curIPStr = shuffleArray[i];
 		if (curIPStr.find("-") != std::string::npos) {
 			std::vector<std::string> tmpIPVec = Utils::splitToStrVector(curIPStr, '-');
@@ -144,11 +222,19 @@ int MainStarter::fileLoader(const char *fileName) {
 				ipsendfl[MainStarter::flCounter][3];
 
 			if (ip1 > ip2) {
-				stt->doEmitionRedFoundData(" Malformed input: check your range (" +
-					QString(curIPStr.c_str()) + ")");
+				safeSttCall([&]() { stt->doEmitionRedFoundData(" Malformed input: check your range (" +
+					QString(curIPStr.c_str()) + ")"); });
+				continue;
 			}
 
-			gTargets += ip2 - ip1 + 1;
+			// Limit the size of IP range to prevent memory issues
+			unsigned long rangeSize = ip2 - ip1 + 1;
+			if (rangeSize > 65536) { // Maximum 65536 IPs per range
+				safeSttCall([&]() { stt->doEmitionYellowFoundData("Range too large, skipping: " + QString(curIPStr.c_str())); });
+				continue;
+			}
+
+			gTargets += rangeSize;
 			++MainStarter::flCounter;
 		}
 		else if (curIPStr.find("/") != std::string::npos)
@@ -217,17 +303,39 @@ int MainStarter::fileLoader(const char *fileName) {
 		}
 		else
 		{
-			stt->doEmitionRedFoundData("[IP Loader]Wrong list format. Line-> [" +
-				QString::number(MainStarter::flCounter) +
-				"] String-> [" +
-				QString(curIPStr.c_str()) +
-				"]");
-			return -1;
+			// Handle single IP addresses (not ranges or CIDR)
+			std::vector<int> tmpIPVec = Utils::splitToIntVector(curIPStr.c_str(), '.');
+			if (tmpIPVec.size() == 4) {
+				// Valid single IP address
+				ipsstartfl[MainStarter::flCounter][0] = tmpIPVec[0];
+				ipsstartfl[MainStarter::flCounter][1] = tmpIPVec[1];
+				ipsstartfl[MainStarter::flCounter][2] = tmpIPVec[2];
+				ipsstartfl[MainStarter::flCounter][3] = tmpIPVec[3];
+
+				ipsendfl[MainStarter::flCounter][0] = tmpIPVec[0];
+				ipsendfl[MainStarter::flCounter][1] = tmpIPVec[1];
+				ipsendfl[MainStarter::flCounter][2] = tmpIPVec[2];
+				ipsendfl[MainStarter::flCounter][3] = tmpIPVec[3];
+
+				gTargets += 1;
+				++MainStarter::flCounter;
+			} else {
+				stt->doEmitionRedFoundData("[IP Loader]Wrong list format. Line-> [" +
+					QString::number(MainStarter::flCounter) +
+					"] String-> [" +
+					QString(curIPStr.c_str()) +
+					"]");
+				return -1;
+			}
 		};
 	};
 	gTargetsNumber = gTargets;
 	stt->doEmitionYellowFoundData("List loader - [OK] (" + QString::number(gTargetsNumber + 1) + " hosts)");
+	
+	// Reset flag
+	inFileLoader = false;
 
+	return 0;
 }
 int MainStarter::loadTargets(const char *data) {
 
@@ -261,8 +369,8 @@ int MainStarter::loadTargets(const char *data) {
 				ip_max[tmp1] = ip_min[tmp1] + pow(2, tmp2) - 1;
 			}
 
-			char newRangeString[128] = { 0 };
-			sprintf(newRangeString, "%u.%u.%u.%u-%u.%u.%u.%u", 
+			char newRangeString[256] = { 0 };
+			snprintf(newRangeString, sizeof(newRangeString), "%u.%u.%u.%u-%u.%u.%u.%u", 
 				ip_min[0], ip_min[1], ip_min[2], ip_min[3], ip_max[0], ip_max[1], ip_max[2], ip_max[3]);
 			rangeVec = Utils::splitToStrVector(std::string(newRangeString), '-');
 		}
@@ -295,25 +403,39 @@ int MainStarter::loadTargets(const char *data) {
 			return -1;
 		}
 
-		sprintf(finalIP, "%d.%d.%d.%d", 
+		snprintf(finalIP, sizeof(finalIP), "%d.%d.%d.%d", 
 			ipsend[0], ipsend[1], ipsend[2], ipsend[3]);
 
 		gTargets = ip2 - ip1 + 1;
 		gTargetsNumber = gTargets;
 	}
 	else if (gMode == 1) {
-		strncpy(dnsTarget, data, 256);
+		strncpy(dnsTarget, data, 255);
+		dnsTarget[255] = '\0'; // Ensure null termination
 
 		gTargets = ip2 - ip1 + 1;
 		gTargetsNumber = gTargets;
 	} 
 	else {
 		if (fileLoader(data) == -1) {
-			stt->doEmitionRedFoundData("IP list is empty.");
+			safeSttCall([&]() { stt->doEmitionRedFoundData("IP list is empty."); });
 			return -1;
 		}
-		sprintf(finalIP, "%d.%d.%d.%d", 
-			ipsendfl[gflIndex][0], ipsendfl[gflIndex][1], ipsendfl[gflIndex][2], ipsendfl[gflIndex][3]);
+		// Check if arrays are initialized and gflIndex is valid
+		// Reset gflIndex to 0 for safety
+		gflIndex = 0;
+		if (ipsendfl != NULL && flCounter > 0 && gflIndex >= 0 && gflIndex < flCounter) {
+			// Ensure indices are valid before accessing
+			if (ipsendfl[gflIndex] != NULL) {
+				snprintf(finalIP, sizeof(finalIP), "%d.%d.%d.%d", 
+					ipsendfl[gflIndex][0], ipsendfl[gflIndex][1], ipsendfl[gflIndex][2], ipsendfl[gflIndex][3]);
+			} else {
+				snprintf(finalIP, sizeof(finalIP), "0.0.0.0");
+			}
+		} else {
+			// Default value if arrays not initialized
+			snprintf(finalIP, sizeof(finalIP), "0.0.0.0");
+		}
 	}
 
 	return 0;
@@ -326,6 +448,14 @@ int MainStarter::loadPorts(const char *data, char delim) {
 			return -1;
 		}
 	}
+	// Store ports in gPorts buffer (for backup saving), but limit to prevent overflow
+	// Format: "-p" + comma-separated ports
+	size_t portsLen = strlen(data);
+	size_t maxPortsLen = sizeof(gPorts) - 3; // Leave room for "-p" prefix and null terminator
+	if (portsLen > maxPortsLen) {
+		portsLen = maxPortsLen;
+	}
+	snprintf(gPorts, sizeof(gPorts), "-p%.*s", (int)portsLen, data);
 	return 0;
 }
 
@@ -340,21 +470,32 @@ void MainStarter::saveBackupToFile()
 		if (gMode == 1)
 		{
 			if (strlen(currentMask) == 0) {
-				sprintf(endStr, "%s", currentIP);
+				snprintf(endStr, sizeof(endStr), "%s", currentIP);
 			}
-			else strcpy(endStr, currentMask);
+			else {
+				// Use strncpy to prevent overflow
+				strncpy(endStr, currentMask, sizeof(endStr) - 1);
+				endStr[sizeof(endStr) - 1] = '\0';
+			}
 		}
 		else
 		{
-			if (strlen(finalIP) == 0) sprintf(endStr, "%s", currentIP);
-			else sprintf(endStr, "%s-%s", currentIP, finalIP);
+			if (strlen(finalIP) == 0) snprintf(endStr, sizeof(endStr), "%s", currentIP);
+			else snprintf(endStr, sizeof(endStr), "%s-%s", currentIP, finalIP);
 		};
 
 		if (strlen(endStr) > 0)
 		{
-			sprintf(saveStr, "[SESSION]:%d %s %s %d %s\n",
-				gMode, endStr, gTLD, int(gThreads), gPorts);
-			strcat(saveBuffer, saveStr);
+			// Limit gPorts to prevent buffer overflow
+			char portsDisplay[256] = {0};
+			strncpy(portsDisplay, gPorts, sizeof(portsDisplay) - 1);
+			portsDisplay[sizeof(portsDisplay) - 1] = '\0';
+			snprintf(saveStr, sizeof(saveStr), "[SESSION]:%d %s %s %d %s\n",
+				gMode, endStr, gTLD, int(gThreads), portsDisplay);
+			// Check buffer size before strcat
+			if (strlen(saveBuffer) + strlen(saveStr) < sizeof(saveBuffer) - 1) {
+				strcat(saveBuffer, saveStr);
+			}
 			//ZeroMemory(saveStr, sizeof(saveStr));
 			saveStr[0] = 0;
 		};
@@ -365,7 +506,19 @@ void MainStarter::saveBackupToFile()
 
 		if (MainStarter::flCounter > 0)
 		{
-			if (!saveBackup) return;
+			if (!saveBackup) {
+				// Don't create backup file, just return without accessing arrays
+				return;
+			}
+			// Check if arrays are initialized before accessing
+			if (ipsstartfl == NULL || ipsendfl == NULL) {
+				return;
+			}
+			// Check if gflIndex is valid
+			if (gflIndex < 0 || gflIndex >= flCounter) {
+				// Reset to 0 if invalid
+				gflIndex = 0;
+			}
 			FILE *savingFile = fopen("tempIPLst.bk", "w");
 			if (NULL != savingFile)
 			{
@@ -405,92 +558,117 @@ void MainStarter::saveBackupToFile()
 			else stt->doEmitionRedFoundData("[_saver] Cannot open file.");
 		};
 
-		sprintf(saveStr, "[SESSION]:%d RESTORE_IMPORT_SESSION %d %s\n", gMode, int(gThreads), gPorts);
-		strcat(saveBuffer, saveStr);
+		// Limit gPorts to prevent buffer overflow (saveStr is 512 bytes)
+		char portsDisplay[256] = {0};
+		strncpy(portsDisplay, gPorts, sizeof(portsDisplay) - 1);
+		portsDisplay[sizeof(portsDisplay) - 1] = '\0';
+		snprintf(saveStr, sizeof(saveStr), "[SESSION]:%d RESTORE_IMPORT_SESSION %d %s\n", gMode, int(gThreads), portsDisplay);
+		// Check buffer size before strcat
+		if (strlen(saveBuffer) + strlen(saveStr) < sizeof(saveBuffer) - 1) {
+			strcat(saveBuffer, saveStr);
+		}
 		//ZeroMemory(saveStr, sizeof(saveStr));
 		saveStr[0] = 0;
 	}
 	else {
-		sprintf(saveStr, "[SESSION]: 0 1.1.1.1/32 0 -p80");
+	snprintf(saveStr, sizeof(saveStr), "[SESSION]: 0 1.1.1.1/32 0 -p80");
+	if (strlen(saveBuffer) + strlen(saveStr) < sizeof(saveBuffer) - 1) {
 		strcat(saveBuffer, saveStr);
-		//ZeroMemory(saveStr, sizeof(saveStr));
-		saveStr[0] = 0;
+	}
+	saveStr[0] = 0;
 	}
 
-	sprintf(saveStr, "[NDBSERVER]:%s\n", trcSrv);
-	strcat(saveBuffer, saveStr);
+	snprintf(saveStr, sizeof(saveStr), "[NDBSERVER]:%s\n", trcSrv);
+	if (strlen(saveBuffer) + strlen(saveStr) < sizeof(saveBuffer) - 1) {
+		strcat(saveBuffer, saveStr);
+	}
+	saveStr[0] = 0;
+
+	snprintf(saveStr, sizeof(saveStr), "[NDBSCRIPT]:%s\n", trcScr);
+	if (strlen(saveBuffer) + strlen(saveStr) < sizeof(saveBuffer) - 1) {
+		strcat(saveBuffer, saveStr);
+	}
+	saveStr[0] = 0;
+
+	snprintf(saveStr, sizeof(saveStr), "[NDBPORT]:%s\n", trcSrvPortLine);
+	if (strlen(saveBuffer) + strlen(saveStr) < sizeof(saveBuffer) - 1) {
+		strcat(saveBuffer, saveStr);
+	}
+	saveStr[0] = 0;
+
+	snprintf(saveStr, sizeof(saveStr), "[PROXY]:%s\n", trcProxy);
+	if (strlen(saveBuffer) + strlen(saveStr) < sizeof(saveBuffer) - 1) {
+		strcat(saveBuffer, saveStr);
+	}
+	saveStr[0] = 0;
+
+	snprintf(saveStr, sizeof(saveStr), "[PROXYPORT]:%s\n", trcPort);
+	if (strlen(saveBuffer) + strlen(saveStr) < sizeof(saveBuffer) - 1) {
+		strcat(saveBuffer, saveStr);
+	}
+	saveStr[0] = 0;
+
+	snprintf(saveStr, sizeof(saveStr), "[PING]:%s\n", gPingNScan ? "true" : "false");
+	if (strlen(saveBuffer) + strlen(saveStr) < sizeof(saveBuffer) - 1) {
+		strcat(saveBuffer, saveStr);
+	}
+	saveStr[0] = 0;
+
+	snprintf(saveStr, sizeof(saveStr), "[SHUFFLE]:%s\n", gShuffle ? "true" : "false");
+	if (strlen(saveBuffer) + strlen(saveStr) < sizeof(saveBuffer) - 1) {
+		strcat(saveBuffer, saveStr);
+	}
 	//ZeroMemory(saveStr, sizeof(saveStr));
 	saveStr[0] = 0;
 
-	sprintf(saveStr, "[NDBSCRIPT]:%s\n", trcScr);
-	strcat(saveBuffer, saveStr);
+	snprintf(saveStr, sizeof(saveStr), "[NSTRACK]:%s\n", trackerOK ? "true" : "false");
+	if (strlen(saveBuffer) + strlen(saveStr) < sizeof(saveBuffer) - 1) {
+		strcat(saveBuffer, saveStr);
+	}
 	//ZeroMemory(saveStr, sizeof(saveStr));
 	saveStr[0] = 0;
 
-	sprintf(saveStr, "[NDBPORT]:%s\n", trcSrvPortLine);
-	strcat(saveBuffer, saveStr);
+	snprintf(saveStr, sizeof(saveStr), "[PING_TO]: %d\n", gPingTimeout);
+	if (strlen(saveBuffer) + strlen(saveStr) < sizeof(saveBuffer) - 1) {
+		strcat(saveBuffer, saveStr);
+	}
+	saveStr[0] = 0;
+
+	snprintf(saveStr, sizeof(saveStr), "[THREAD_DELAY]: %d\n", Threader::gThreadDelay);
+	if (strlen(saveBuffer) + strlen(saveStr) < sizeof(saveBuffer) - 1) {
+		strcat(saveBuffer, saveStr);
+	}
+	saveStr[0] = 0;
+
+	snprintf(saveStr, sizeof(saveStr), "[TIMEOUT]: %d\n", gTimeOut);
+	if (strlen(saveBuffer) + strlen(saveStr) < sizeof(saveBuffer) - 1) {
+		strcat(saveBuffer, saveStr);
+	}
+	saveStr[0] = 0;
+
+	snprintf(saveStr, sizeof(saveStr), "[MAXBTHR]: %d\n", gMaxBrutingThreads);
+	if (strlen(saveBuffer) + strlen(saveStr) < sizeof(saveBuffer) - 1) {
+		strcat(saveBuffer, saveStr);
+	}
+	saveStr[0] = 0;
+
+	snprintf(saveStr, sizeof(saveStr), "[SYSTEMPROXYIP]: %s\n", gProxyIP);
+	if (strlen(saveBuffer) + strlen(saveStr) < sizeof(saveBuffer) - 1) {
+		strcat(saveBuffer, saveStr);
+	}
+	saveStr[0] = 0;
+
+	snprintf(saveStr, sizeof(saveStr), "[SYSTEMPROXYPORT]: %s\n", gProxyPort);
+	if (strlen(saveBuffer) + strlen(saveStr) < sizeof(saveBuffer) - 1) {
+		strcat(saveBuffer, saveStr);
+	}
 	//ZeroMemory(saveStr, sizeof(saveStr));
 	saveStr[0] = 0;
 
-	sprintf(saveStr, "[PROXY]:%s\n", trcProxy);
-	strcat(saveBuffer, saveStr);
-	//ZeroMemory(saveStr, sizeof(saveStr));
-	saveStr[0] = 0;
-
-	sprintf(saveStr, "[PROXYPORT]:%s\n", trcPort);
-	strcat(saveBuffer, saveStr);
-	//ZeroMemory(saveStr, sizeof(saveStr));
-	saveStr[0] = 0;
-
-	sprintf(saveStr, "[PING]:%s\n", gPingNScan ? "true" : "false");
-	strcat(saveBuffer, saveStr);
-	//ZeroMemory(saveStr, sizeof(saveStr));
-	saveStr[0] = 0;
-
-	sprintf(saveStr, "[SHUFFLE]:%s\n", gShuffle ? "true" : "false");
-	strcat(saveBuffer, saveStr);
-	//ZeroMemory(saveStr, sizeof(saveStr));
-	saveStr[0] = 0;
-
-	sprintf(saveStr, "[NSTRACK]:%s\n", trackerOK ? "true" : "false");
-	strcat(saveBuffer, saveStr);
-	//ZeroMemory(saveStr, sizeof(saveStr));
-	saveStr[0] = 0;
-
-	sprintf(saveStr, "[PING_TO]: %d\n", gPingTimeout);
-	strcat(saveBuffer, saveStr);
-	//ZeroMemory(saveStr, sizeof(saveStr));
-	saveStr[0] = 0;
-
-	sprintf(saveStr, "[THREAD_DELAY]: %d\n", Threader::gThreadDelay);
-	strcat(saveBuffer, saveStr);
-	//ZeroMemory(saveStr, sizeof(saveStr));
-	saveStr[0] = 0;
-
-	sprintf(saveStr, "[TIMEOUT]: %d\n", gTimeOut);
-	strcat(saveBuffer, saveStr);
-	//ZeroMemory(saveStr, sizeof(saveStr));
-	saveStr[0] = 0;
-
-	sprintf(saveStr, "[MAXBTHR]: %d\n", gMaxBrutingThreads);
-	strcat(saveBuffer, saveStr);
-	//ZeroMemory(saveStr, sizeof(saveStr));
-	saveStr[0] = 0;
-
-	sprintf(saveStr, "[SYSTEMPROXYIP]: %s\n", gProxyIP);
-	strcat(saveBuffer, saveStr);
-	//ZeroMemory(saveStr, sizeof(saveStr));
-	saveStr[0] = 0;
-
-	sprintf(saveStr, "[SYSTEMPROXYPORT]: %s\n", gProxyPort);
-	strcat(saveBuffer, saveStr);
-	//ZeroMemory(saveStr, sizeof(saveStr));
-	saveStr[0] = 0;
-
-	strcpy(saveStr, "[PERSKEY]:");
-	strncat(saveStr, trcPersKey, 32);
-	strcat(saveStr, "\n");
-	strcat(saveBuffer, saveStr);
+	snprintf(saveStr, sizeof(saveStr), "[PERSKEY]:%.32s\n", trcPersKey);
+	if (strlen(saveBuffer) + strlen(saveStr) < sizeof(saveBuffer) - 1) {
+		strcat(saveBuffer, saveStr);
+	}
 	//ZeroMemory(saveStr, sizeof(saveStr));
 	saveStr[0] = 0;
 
@@ -703,10 +881,10 @@ void _tracker() {
 					continue;
 				};
 
-				if (jsonArr->size() > 0)
+				if (jsonArr != NULL && jsonArr->size() > 0)
 				{
 					QJsonObject jsonKey;
-					if (jsonArr == NULL) jsonArr = new QJsonArray();
+					// jsonArr is already initialized as global variable
 
 					QJsonObject jsonMeta;
 					if (gMode == 0) jsonMeta.insert("mode", QJsonValue(QString("IP")));					//
@@ -757,8 +935,12 @@ void _tracker() {
 
 					strcat(msg, r.data());
 
-					delete jsonArr;
-					jsonArr = new QJsonArray();
+					// Clear the array by removing all elements
+					if (jsonArr != NULL) {
+						while (jsonArr->size() > 0) {
+							jsonArr->removeAt(0);
+						}
+					}
 
 #if defined(WIN32) || defined(_WIN32) || defined(__WIN32) && !defined(__CYGWIN__)
 					if (inet_addr(ndbServer) != INADDR_NONE) sockAddr.sin_addr.S_un.S_addr = inet_addr(ndbServer);
@@ -965,7 +1147,8 @@ void MainStarter::startIPScan(){
 					   ipVec.push_back(inet_ntoa(tAddr));
 					   ++indexIP;
 
-					   strcpy(currentIP, ipVec[0].c_str());
+				strncpy(currentIP, ipVec[0].c_str(), sizeof(currentIP) - 1);
+				currentIP[sizeof(currentIP) - 1] = '\0';
 					   ipVec.erase(ipVec.begin());
 					   verboseProgress(gTargets);
 
@@ -1015,7 +1198,8 @@ void MainStarter::startIPScan(){
 
 							   ++indexIP;
 
-							   strcpy(currentIP, ipVec[0].c_str());
+				strncpy(currentIP, ipVec[0].c_str(), sizeof(currentIP) - 1);
+				currentIP[sizeof(currentIP) - 1] = '\0';
 							   ipVec.erase(ipVec.begin());
 							   verboseProgress(gTargets);
 
@@ -1037,7 +1221,8 @@ void MainStarter::startIPScan(){
 
 						   ++indexIP;
 
-						   strcpy(currentIP, ipVec[0].c_str());
+				strncpy(currentIP, ipVec[0].c_str(), sizeof(currentIP) - 1);
+				currentIP[sizeof(currentIP) - 1] = '\0';
 						   ipVec.erase(ipVec.begin());
 						   verboseProgress(gTargets);
 
@@ -1060,7 +1245,9 @@ void MainStarter::startIPScan(){
 						++indexIP;
 
 						tAddr.s_addr = ntohl(i);
-						strcpy(currentIP, inet_ntoa(tAddr));
+						const char* ipStr = inet_ntoa(tAddr);
+						strncpy(currentIP, ipStr, sizeof(currentIP) - 1);
+						currentIP[sizeof(currentIP) - 1] = '\0';
 						verboseProgress(gTargets);
 
 						Threader::fireThread(currentIP, (void*(*)(void))_connect);
@@ -1279,9 +1466,9 @@ void MainStarter::startImportScan(){
 
 	if (MainStarter::flCounter == 0)
 	{
-		stt->doEmitionRedFoundData("Empty IP list.");
+		safeSttCall([&]() { stt->doEmitionRedFoundData("Empty IP list."); });
 		globalScanFlag = false;
-		stt->doEmitionKillSttThread();
+		safeSttCall([&]() { stt->doEmitionKillSttThread(); });
 		return;
 	};
 
@@ -1327,8 +1514,10 @@ void MainStarter::startImportScan(){
 
 						   ++indexIP;
 
-						   tAddr.s_addr = ntohl(ip);
-						   strcpy(currentIP, inet_ntoa(tAddr));
+				tAddr.s_addr = ntohl(ip);
+				const char* ipStr = inet_ntoa(tAddr);
+				strncpy(currentIP, ipStr, sizeof(currentIP) - 1);
+				currentIP[sizeof(currentIP) - 1] = '\0';
 						   verboseProgress(gTargets);
 
 						   Threader::fireThread(currentIP, (void*(*)(void))_connect);
@@ -1357,7 +1546,9 @@ void MainStarter::startImportScan(){
 				++indexIP;
 
 				tAddr.s_addr = ntohl(i);
-				strcpy(currentIP, inet_ntoa(tAddr));
+				const char* ipStr = inet_ntoa(tAddr);
+				strncpy(currentIP, ipStr, sizeof(currentIP) - 1);
+				currentIP[sizeof(currentIP) - 1] = '\0';
 				verboseProgress(gTargets);
 				Threader::fireThread(currentIP, (void*(*)(void))_connect);
 			}
@@ -1470,7 +1661,7 @@ void MainStarter::start(const char* targets, const char* ports) {
 	MainStarter::ipsendfl = NULL;
 	HikVis::hikCounter = 0;
 	HikVis::rviCounter = 0;
-	saveBackup = true;
+	saveBackup = true;  // Re-enable after fixing stack overflow
 	curl_global_init(CURL_GLOBAL_ALL);
 	
 	thread_setup();

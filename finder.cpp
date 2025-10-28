@@ -14,6 +14,10 @@
 #include <qjsonobject.h>
 #include "RTSP.h"
 #include "MainStarter.h"
+#include <QTextCodec>
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+#include <QtCore5Compat/QTextCodec>
+#endif
 
 #ifndef WIN32
 	#define _cdecl

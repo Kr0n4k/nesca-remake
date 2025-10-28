@@ -10,6 +10,7 @@ class DrawerTh_GridQoSScanner : public QThread
 
 public:
 public: signals: void sAddLine();
+public: signals: void sAddDelimLines();
 
 public:
 	void doEmitAddLine();

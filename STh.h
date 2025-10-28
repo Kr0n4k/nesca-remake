@@ -2,7 +2,10 @@
 #ifndef STH_H
 #define STH_H
 
-#include "nesca_3.h"
+// Forward declarations to avoid GUI dependencies
+#include <qthread.h>
+#include <QString>
+#include <QList>
 #include "externFunctions.h"
 #include "MainStarter.h"
 #include "externData.h"
@@ -74,6 +77,7 @@ public: signals : void signalUpdateArc(unsigned long);
 public: signals : void signalBlockButton(bool);
 		//BA TablelistView
 public: signals : void signalChangeBARow(int, QString, QString);
+public: signals : void signalAddBARow(int&, QString);
 
 protected:
 	void run();

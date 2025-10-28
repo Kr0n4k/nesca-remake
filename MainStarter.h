@@ -108,18 +108,20 @@ public:
 			delete[] sshlpLst;
 			sshlpLst = NULL;
 		};
-		if (ipsstartfl != NULL)
-		{
-			for (int i = 0; i < flCounter; ++i) delete[] ipsstartfl[i];
-			delete[] ipsstartfl;
-			ipsstartfl = NULL;
-		};
-		if (ipsendfl != NULL)
-		{
-			for (int i = 0; i < flCounter; ++i) delete[] ipsendfl[i];
-			delete[] ipsendfl;
-			ipsendfl = NULL;
-		};
+		// Don't delete static arrays in destructor - they are shared across instances
+		// Memory cleanup should be done explicitly when needed, not in destructor
+		// if (ipsstartfl != NULL)
+		// {
+		// 	for (int i = 0; i < flCounter; ++i) delete[] ipsstartfl[i];
+		// 	delete[] ipsstartfl;
+		// 	ipsstartfl = NULL;
+		// };
+		// if (ipsendfl != NULL)
+		// {
+		// 	for (int i = 0; i < flCounter; ++i) delete[] ipsendfl[i];
+		// 	delete[] ipsendfl;
+		// 	ipsendfl = NULL;
+		// };
 
 		unBlockButtons();
 	}

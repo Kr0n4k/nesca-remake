@@ -67,7 +67,7 @@ protected:
 		void ThreadDelay_ChangeValue(QString val);
 		void ChangePingerOK(bool val);
 		void changeNSTrackLabel(bool status);
-        void DNSLine_ValueChanged();
+        void DNSLine_ValueChanged(QString);
         void slotShowRedVersion();
         void slotTabChanged(int index);
 		void IPScanSeq();
@@ -83,8 +83,8 @@ protected:
         void slotClearLogs();
 		void slotDrawVoiceGrid(int factor);
         void slotDrawTextPlacers();
-//		void CheckPersKey();
-//		bool CheckPersKeyMain();
+		void CheckPersKey();
+		bool CheckPersKeyMain();
         void slotRestoreDefPorts();
         void switchToJobMode();
 		void switchDataFields();
@@ -92,6 +92,7 @@ protected:
 		void slotQoSAddGrid();
 		void slotVoiceAddLine();
 		void slotDrawDelimLines();
+		void slotQoSDrawDelimLines();
 		void slotDrawActivityLine(QString data);
 		void slotDrawActivityGrid();
 		void activateME2ScanScene();
@@ -128,6 +129,7 @@ protected:
 		void slotBlockButtons(bool value);
 		//BA TablelistView
 		void slotChangeBARow(const int index, const QString loginPass, const QString percentage);
+		void slotAddBARow(int&, QString);
 		void slotEditFilter();
 
 private:
