@@ -1,5 +1,6 @@
 #include "Connector.h"
 #include "SSHAuth.h"
+#include <errno.h>
 // #include "Filter.h" // Pantene: Где файл?
 
 //#if defined(WIN32) || defined(_WIN32) || defined(__WIN32) && !defined(__CYGWIN__)
@@ -228,12 +229,20 @@ int pConnect(const char* ip, const int port, std::string *buffer,
 			//	stt->doEmitionDebugFoundData("NConnect failed (curl_code: " + QString::number(res) + ") [<a href=\"" + QString(ip) +
 			//		"/\"><font color=\"#0084ff\">" + QString(ip) + " Port:" + QString::number(port) + "</font></a>]");
 			//}
+			// Check for buffer/memory issues by attempting to create a socket
+			// socket() returns -1 on error, and errno is set to error code
+			errno = 0;
 			SOCKET eNobuffSocket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-			shutdown(eNobuffSocket, SD_BOTH);
-			closesocket(eNobuffSocket);
-			if (ENOBUFS == eNobuffSocket || ENOMEM == eNobuffSocket) {
-				stt->doEmitionRedFoundData("Insufficient buffer/memory space. Sleeping for 10 sec...");
-				Sleep(10000);
+			if (eNobuffSocket == (SOCKET)-1) {
+				// Socket creation failed, check if it's a buffer/memory issue
+				if (errno == ENOBUFS || errno == ENOMEM) {
+					stt->doEmitionRedFoundData("Insufficient buffer/memory space. Sleeping for 10 sec...");
+					Sleep(10000);
+				}
+			} else {
+				// Socket created successfully, close it
+				shutdown(eNobuffSocket, SD_BOTH);
+				closesocket(eNobuffSocket);
 			}
 			return -1;
 		}
@@ -516,12 +525,19 @@ bool portCheck(const char * sDVRIP, int wDVRPort) {
 			{
 				/*stt->doEmitionDebugFoundData("Port check failed (curl_code: " + QString::number(res) + ") [<a href=\"" + QString(sDVRIP) + ":" + QString::number(wDVRPort) +
 					"/\"><font color=\"#0084ff\">" + QString(sDVRIP) + ":" + QString::number(wDVRPort) + "</font></a>]");*/
+				// Check for buffer/memory issues by attempting to create a socket
+				errno = 0;
 				SOCKET eNobuffSocket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-				shutdown(eNobuffSocket, SD_BOTH);
-				closesocket(eNobuffSocket);
-				if (ENOBUFS == eNobuffSocket || ENOMEM == eNobuffSocket) {
-					stt->doEmitionRedFoundData("Insufficient buffer/memory space. Sleeping for 10 sec...");
-					Sleep(10000);
+				if (eNobuffSocket == (SOCKET)-1) {
+					// Socket creation failed, check if it's a buffer/memory issue
+					if (errno == ENOBUFS || errno == ENOMEM) {
+						stt->doEmitionRedFoundData("Insufficient buffer/memory space. Sleeping for 10 sec...");
+						Sleep(10000);
+					}
+				} else {
+					// Socket created successfully, close it
+					shutdown(eNobuffSocket, SD_BOTH);
+					closesocket(eNobuffSocket);
 				}
 			}
 			return false;
