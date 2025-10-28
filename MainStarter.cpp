@@ -3,6 +3,7 @@
 #include <random>
 #include <algorithm>
 #include <functional>
+#include <QTextStream>
 
 int gTimeOut = 3;
 int gPingTimeout = 1;
@@ -339,7 +340,7 @@ int MainStarter::fileLoader(const char *fileName) {
 		};
 	};
 	gTargetsNumber = gTargets;
-	stt->doEmitionYellowFoundData("List loader - [OK] (" + QString::number(gTargetsNumber + 1) + " hosts)");
+	stt->doEmitionYellowFoundData("List loader - Loaded " + QString::number(gTargetsNumber) + " hosts");
 	
 	// Reset flag
 	inFileLoader = false;
@@ -1702,7 +1703,11 @@ void MainStarter::start(const char* targets, const char* ports) {
 	
 	thread_cleanup();
 
-	stt->doEmitionGreenFoundData("Done. Saved <u>" + QString::number(saved) + 
-		"</u> of <u>" + QString::number(found) + "</u> nodes.");
+	// Print final progress line with newline
+	QTextStream progressOut(stdout);
+	progressOut << Qt::endl; // Finish progress line
+	
+	stt->doEmitionGreenFoundData("Done. Saved " + QString::number(saved) + 
+		" of " + QString::number(found) + " nodes.");
 	stt->doEmitionKillSttThread();
 }

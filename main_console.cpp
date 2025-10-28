@@ -4,6 +4,7 @@
 #include <QTextStream>
 #include <iostream>
 #include <cstring>
+#include <thread>
 #include "externData.h"
 #include "Utils.h"
 
@@ -12,6 +13,41 @@ STh *stt = nullptr;
 
 // Initialize global scan flag
 bool globalScanFlag = false;
+
+// Helper function to get optimal thread count
+int getOptimalThreadCount() {
+	unsigned int hwThreads = std::thread::hardware_concurrency();
+	if (hwThreads == 0) {
+		// Fallback if hardware_concurrency is not available
+		return 100;
+	}
+	// Use 2x CPU cores for I/O bound operations, but cap at reasonable maximum
+	int optimal = hwThreads * 2;
+	if (optimal < 50) optimal = 50;   // Minimum reasonable value
+	if (optimal > 500) optimal = 500; // Maximum reasonable value
+	return optimal;
+}
+
+// Validate and set thread count
+bool setThreadCount(int threads, bool autoDetect) {
+	const int MIN_THREADS = 1;
+	const int MAX_THREADS = 2000;
+	
+	if (autoDetect) {
+		gThreads = getOptimalThreadCount();
+		return true;
+	}
+	
+	if (threads < MIN_THREADS || threads > MAX_THREADS) {
+		QTextStream err(stderr);
+		err << "Error: Thread count must be between " << MIN_THREADS 
+		    << " and " << MAX_THREADS << Qt::endl;
+		return false;
+	}
+	
+	gThreads = threads;
+	return true;
+}
 
 void printUsage(const char* progName) {
 	QTextStream out(stdout);
@@ -24,14 +60,17 @@ void printUsage(const char* progName) {
 	out << Qt::endl;
 	out << "Options:" << Qt::endl;
 	out << "  -p, --ports PORTS          Ports to scan (comma-separated, default: " << PORTSET << ")" << Qt::endl;
-	out << "  -t, --threads N            Number of threads (default: auto)" << Qt::endl;
+	out << "  -t, --threads N            Number of threads (1-2000, default: auto-detect)" << Qt::endl;
 	out << "  --tld TLD                  Top-level domain for DNS scan (default: .com)" << Qt::endl;
 	out << "  -h, --help                 Show this help message" << Qt::endl;
+	out << Qt::endl;
+	out << "Note: Auto-detect uses 2x CPU cores (min: 50, max: 500 threads)" << Qt::endl;
 	out << Qt::endl;
 	out << "Examples:" << Qt::endl;
 	out << "  " << progName << " --ip 192.168.1.1-192.168.1.255 -p 80,443,8080" << Qt::endl;
 	out << "  " << progName << " --dns test[a-z] --tld .com -p 80,443" << Qt::endl;
-	out << "  " << progName << " --import ip_list.txt -p 80,443" << Qt::endl;
+	out << "  " << progName << " --import ip_list.txt -p 80,443 -t 200" << Qt::endl;
+	out << "  " << progName << " --import ip_list.txt -p 80,443 --threads auto" << Qt::endl;
 }
 
 int main(int argc, char *argv[])
@@ -45,6 +84,8 @@ int main(int argc, char *argv[])
 	QString target;
 	QString ports = PORTSET;
 	QString tld = ".com";
+	bool threadsSpecified = false;
+	bool autoDetectThreads = false;
 	
 	// Parse command line arguments
 	for (int i = 1; i < argc; i++) {
@@ -85,10 +126,21 @@ int main(int argc, char *argv[])
 			}
 		} else if (strcmp(argv[i], "-t") == 0 || strcmp(argv[i], "--threads") == 0) {
 			if (i + 1 < argc) {
-				gThreads = atoi(argv[++i]);
+				QString threadsArg = QString(argv[++i]);
+				if (threadsArg.toLower() == "auto") {
+					autoDetectThreads = true;
+					threadsSpecified = true;
+				} else {
+					bool ok;
+					int threads = threadsArg.toInt(&ok);
+					if (!ok || !setThreadCount(threads, false)) {
+						return 1;
+					}
+					threadsSpecified = true;
+				}
 			} else {
 				QTextStream err(stderr);
-				err << "Error: --threads requires a number" << Qt::endl;
+				err << "Error: --threads requires a number or 'auto'" << Qt::endl;
 				return 1;
 			}
 		} else if (strcmp(argv[i], "--tld") == 0) {
@@ -161,6 +213,30 @@ int main(int argc, char *argv[])
 	
 	ports.replace(" ", "");
 	stt->setPorts(ports);
+	
+	// Set threads if not specified (auto-detect)
+	if (!threadsSpecified || autoDetectThreads) {
+		if (!setThreadCount(0, true)) {
+			return 1;
+		}
+	}
+	
+	// Display thread configuration with ANSI colors
+	QTextStream out(stdout);
+	const char* ANSI_CYAN = "\033[36m";
+	const char* ANSI_BOLD = "\033[1m";
+	const char* ANSI_GREEN = "\033[32m";
+	const char* ANSI_RESET = "\033[0m";
+	
+	unsigned int hwThreads = std::thread::hardware_concurrency();
+	if (hwThreads > 0 && (autoDetectThreads || !threadsSpecified)) {
+		out << ANSI_CYAN << "ℹ" << ANSI_RESET << " Using " << ANSI_BOLD << ANSI_GREEN 
+		    << gThreads << ANSI_RESET << " threads (auto-detected from " 
+		    << hwThreads << " CPU cores)" << Qt::endl;
+	} else {
+		out << ANSI_CYAN << "ℹ" << ANSI_RESET << " Using " << ANSI_BOLD << ANSI_GREEN 
+		    << gThreads << ANSI_RESET << " threads" << Qt::endl;
+	}
 	
 	// Start scan in a thread
 	stt->start();
