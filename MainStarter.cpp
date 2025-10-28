@@ -69,6 +69,15 @@ int globalPinger = 0;
 int cIndex = 0;
 float QoSStep = 1;
 
+// Hikvision function pointers (previously in nesca_3.cpp)
+// These are defined in mainResources.h and will be initialized to NULL
+// They need to be defined here to satisfy linker
+#include "mainResources.h"
+
+NET_DVR_Init hik_init_ptr = NULL;
+NET_DVR_Cleanup hik_cleanup_ptr = NULL;
+NET_DVR_Login_V30 hik_login_ptr = NULL;
+
 // Helper function to safely call stt methods
 void safeSttCall(std::function<void()> func) {
 	if (stt != nullptr) {

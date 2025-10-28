@@ -119,7 +119,10 @@ char *_findLast(char *str, char *delim)
 
 char *getCodePage(const char *str)
 {
-	char cdpg[32] = {0};
+	// Use static buffer to avoid returning pointer to local variable
+	static char cdpg[32] = {0};
+	// Clear the buffer before use
+	memset(cdpg, 0, sizeof(cdpg));
 	char *ptr1 = strstri(str, "charset=");
 
 	if (ptr1 != NULL)
