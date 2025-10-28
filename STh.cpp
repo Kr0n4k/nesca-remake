@@ -16,6 +16,10 @@
 #define ANSI_MAGENTA "\033[35m"
 #define ANSI_GRAY    "\033[90m"
 
+// Progress bar update throttling (update max once per N calls)
+static unsigned long g_lastProgressUpdate = 0;
+static const unsigned long PROGRESS_UPDATE_INTERVAL = 50; // Update every 50 processed targets
+
 // Helper function to strip HTML tags and decode HTML entities
 QString stripHtmlTags(const QString& html) {
 	QString result = html;
@@ -79,6 +83,24 @@ QString extractUrlFromHtml(const QString& html) {
 	return stripHtmlTags(html);
 }
 
+// Get human-readable CURL error description
+QString getCurlErrorString(int curlCode) {
+	switch (curlCode) {
+		case 1: return "Unsupported protocol";
+		case 5: return "Couldn't resolve proxy";
+		case 6: return "Couldn't resolve host";
+		case 7: return "Failed to connect";
+		case 8: return "FTP weird server reply";
+		case 18: return "Partial file transfer";
+		case 28: return "Operation timeout";
+		case 35: return "SSL connect error";
+		case 52: return "Empty server response";
+		case 56: return "Receive error";
+		case 67: return "Login denied";
+		default: return "Unknown error";
+	}
+}
+
 // Консольные версии методов для вывода в stdout/stderr
 //BA TablelistView
 void STh::doEmitionChangeBARow(int index, QString loginPass, QString percentage)
@@ -98,19 +120,19 @@ void STh::doEmitionShowRedVersion()
 void STh::doEmitionStartScanIP()
 {
 	QTextStream out(stdout);
-	out << ANSI_BOLD << ANSI_CYAN << "▶ Starting IP scan..." << ANSI_RESET << Qt::endl;
+	out << ANSI_BOLD << ANSI_CYAN << "[SCAN] Starting IP scan..." << ANSI_RESET << Qt::endl;
 }
 
 void STh::doEmitionStartScanDNS()
 {
 	QTextStream out(stdout);
-	out << ANSI_BOLD << ANSI_CYAN << "▶ Starting DNS scan..." << ANSI_RESET << Qt::endl;
+	out << ANSI_BOLD << ANSI_CYAN << "[SCAN] Starting DNS scan..." << ANSI_RESET << Qt::endl;
 }
 
 void STh::doEmitionStartScanImport()
 {
 	QTextStream out(stdout);
-	out << ANSI_BOLD << ANSI_CYAN << "▶ Starting import scan..." << ANSI_RESET << Qt::endl;
+	out << ANSI_BOLD << ANSI_CYAN << "[SCAN] Starting import scan..." << ANSI_RESET << Qt::endl;
 }
 
 void STh::doEmitionAddIncData(QString ip, QString str)
@@ -138,6 +160,20 @@ void STh::doEmitionFoundData(QString str)
 	// First extract URL from HTML
 	QString url = extractUrlFromHtml(str);
 	QString cleanStr = stripHtmlTags(str);
+	
+	// Skip output if result is empty or just whitespace
+	if (cleanStr.trimmed().isEmpty() && url.isEmpty()) {
+		return;
+	}
+	
+	// Clean up meaningless URLs like "index.html?_" that provide no useful information
+	if (!url.isEmpty() && (url == "index.html?_" || url.startsWith("index.html") || url == "_")) {
+		// Only output if there's meaningful description
+		if (cleanStr.trimmed().isEmpty() || cleanStr.length() < 3) {
+			return;
+		}
+		url.clear(); // Don't show meaningless URL
+	}
 	
 	// Try to extract login:password patterns from cleaned string or HTML
 	// Pattern 1: login:pass@url (from href="http://login:pass@url" or visible text)
@@ -218,9 +254,13 @@ void STh::doEmitionFoundData(QString str)
 	} else {
 		// No login/password, just format URL and text
 		if (url.length() > 0 && url != cleanStr) {
-			out << ANSI_CYAN << url << ANSI_RESET;
+			// Check if cleanStr contains the URL (to avoid duplication)
 			QString rest = cleanStr;
-			rest.remove(url);
+			if (rest.contains(url)) {
+				rest.remove(url);
+				// Also remove any protocol prefixes if URL was in href
+				rest.remove(QRegularExpression("https?://"));
+			}
 			
 			// Clean up prefixes
 			rest.remove(QRegularExpression("^\\s*\\[BA\\]:?\\s*"));
@@ -231,10 +271,19 @@ void STh::doEmitionFoundData(QString str)
 			rest.remove(QRegularExpression("^\\s*T:\\s*"));
 			
 			rest = rest.trimmed();
-			if (!rest.isEmpty()) {
+			// Only show separator if there's meaningful content (more than 1 character, not just ":")
+			if (!rest.isEmpty() && rest.length() > 1 && rest != ":") {
+				// Limit description length for readability
+				if (rest.length() > 150) {
+					rest = rest.left(147) + "...";
+				}
+				out << ANSI_CYAN << url << ANSI_RESET;
 				out << ANSI_GRAY << " : " << ANSI_RESET << rest;
+			} else {
+				// If no description, just show URL
+				out << ANSI_CYAN << url << ANSI_RESET;
 			}
-		} else {
+		} else if (!cleanStr.trimmed().isEmpty()) {
 			// Regular text, just strip HTML
 			QString rest = cleanStr;
 			rest.remove(QRegularExpression("^\\s*\\[BA\\]:?\\s*"));
@@ -242,7 +291,17 @@ void STh::doEmitionFoundData(QString str)
 			rest.remove(QRegularExpression("^\\s*\\[WF\\]:?\\s*"));
 			rest.remove(QRegularExpression("^\\s*\\[SVC\\]:?\\s*"));
 			rest.remove(QRegularExpression("^\\s*\\[RTSP\\]:?\\s*"));
-			out << rest.trimmed();
+			rest = rest.trimmed();
+			if (!rest.isEmpty() && rest != ":") {
+				// Limit description length for readability
+				if (rest.length() > 150) {
+					rest = rest.left(147) + "...";
+				}
+				out << rest;
+			}
+		} else if (!url.isEmpty()) {
+			// Only URL, no description
+			out << ANSI_CYAN << url << ANSI_RESET;
 		}
 	}
 	
@@ -253,6 +312,41 @@ void STh::doEmitionRedFoundData(QString str)
 {
 	QTextStream err(stderr);
 	QString cleanStr = stripHtmlTags(str);
+	
+	// Check if this is a CURL error and enhance it
+	QRegularExpression curlErrorRegex(R"(CURL error:?\s*\((\d+)\)\s*(.*))", QRegularExpression::CaseInsensitiveOption);
+	QRegularExpressionMatch match = curlErrorRegex.match(cleanStr);
+	
+	if (match.hasMatch()) {
+		int curlCode = match.captured(1).toInt();
+		QString url = match.captured(2).trimmed();
+		QString errorDesc = getCurlErrorString(curlCode);
+		
+		// Format: [ERROR] CURL: <description> (<code>) <url>
+		err << ANSI_RED << "[ERROR]" << ANSI_RESET << " CURL: " << ANSI_YELLOW << errorDesc 
+		    << ANSI_RESET << " (" << curlCode << ")";
+		if (!url.isEmpty()) {
+			err << " " << ANSI_CYAN << url << ANSI_RESET;
+		}
+		err << Qt::endl;
+		return;
+	}
+	
+	// Check for "Curl error" (different capitalization, no code)
+	QRegularExpression curlErrorRegex2(R"(Curl error:?\s*(.*))", QRegularExpression::CaseInsensitiveOption);
+	QRegularExpressionMatch match2 = curlErrorRegex2.match(cleanStr);
+	if (match2.hasMatch()) {
+		QString url = match2.captured(1).trimmed();
+		err << ANSI_RED << "[ERROR]" << ANSI_RESET << " CURL: " << ANSI_YELLOW << "Connection failed" 
+		    << ANSI_RESET;
+		if (!url.isEmpty()) {
+			err << " " << ANSI_CYAN << url << ANSI_RESET;
+		}
+		err << Qt::endl;
+		return;
+	}
+	
+	// Regular error message
 	err << ANSI_RED << "[ERROR]" << ANSI_RESET << " " << cleanStr << Qt::endl;
 }
 
@@ -292,7 +386,7 @@ void STh::doEmitionDebugFoundData(QString str)
 void STh::doEmitionKillSttThread()
 {
 	QTextStream out(stdout);
-	out << ANSI_YELLOW << "■ Stopping scan thread..." << ANSI_RESET << Qt::endl;
+	out << ANSI_YELLOW << "[INFO] Stopping scan thread..." << ANSI_RESET << Qt::endl;
 }
 
 void STh::doEmitionDataSaved(bool status)
@@ -308,10 +402,24 @@ void STh::doEmitionUpdateArc(unsigned long gTargets)
 	QTextStream out(stdout);
 	// Calculate percentage if we have total
 	extern unsigned long long gTargetsNumber;
-	QString progressStr;
 	
+	// Throttle progress updates to avoid too frequent screen updates
+	unsigned long processed = (gTargetsNumber > 0 && gTargets <= gTargetsNumber) ? 
+		(gTargetsNumber - gTargets) : 0;
+	
+	// Update only every N processed items or if significant change
+	unsigned long progressDiff = (processed > g_lastProgressUpdate) ? 
+		(processed - g_lastProgressUpdate) : (g_lastProgressUpdate - processed);
+	
+	if (progressDiff < PROGRESS_UPDATE_INTERVAL && g_lastProgressUpdate > 0) {
+		// Skip update if too soon
+		return;
+	}
+	
+	g_lastProgressUpdate = processed;
+	
+	QString progressStr;
 	if (gTargetsNumber > 0 && gTargets <= gTargetsNumber) {
-		unsigned long processed = gTargetsNumber - gTargets;
 		double percent = ((double)processed / (double)gTargetsNumber) * 100.0;
 		QString percentStr = QString::number(percent, 'f', 1);
 		progressStr = QString("[%1/%2] %3% | Remaining: %4")

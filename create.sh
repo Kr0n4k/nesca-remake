@@ -1,0 +1,2 @@
+qmake nesca.pro
+make

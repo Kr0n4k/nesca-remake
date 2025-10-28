@@ -452,9 +452,16 @@ int MainStarter::loadTargets(const char *data) {
 }
 int MainStarter::loadPorts(const char *data, char delim) {
 	portVector = Utils::splitToIntVector(data, delim);
+	
+	if (portVector.empty()) {
+		stt->doEmitionRedFoundData("No ports specified");
+		return -1;
+	}
+	
 	for (auto elem : portVector) {
-		if (elem > 65535 | elem < 0) {
-			stt->doEmitionRedFoundData("Malformed input: check your ports");
+		if (elem > 65535 || elem < 1) {
+			stt->doEmitionRedFoundData("Invalid port number: " + QString::number(elem) + 
+				" (must be between 1 and 65535)");
 			return -1;
 		}
 	}
@@ -1687,19 +1694,72 @@ void MainStarter::start(const char* targets, const char* ports) {
 		stt->doEmitionKillSttThread();
 		return;
 	}
+	
+	// Validate that we have ports to scan
+	if (MainStarter::portVector.empty()) {
+		stt->doEmitionRedFoundData("No valid ports specified for scanning");
+		stt->doEmitionKillSttThread();
+		return;
+	}
+	
+	// Display scan configuration
+	QTextStream configOut(stdout);
+	const char* ANSI_CYAN = "\033[36m";
+	const char* ANSI_GREEN = "\033[32m";
+	const char* ANSI_RESET = "\033[0m";
+	
+	configOut << ANSI_CYAN << "[INFO]" << ANSI_RESET << " Scan configuration:" << Qt::endl;
+	configOut << "  Ports: " << ANSI_GREEN << QString(gPorts).replace("-p", "") << ANSI_RESET << Qt::endl;
+	configOut << "  Mode: ";
+	if (gMode == 0) configOut << "IP Range";
+	else if (gMode == 1) configOut << "DNS";
+	else configOut << "Import";
+	configOut << Qt::endl;
+	configOut << Qt::endl;
 
 	globalScanFlag = true;
 	runAuxiliaryThreads();
+	
+	// Display scan start message and start appropriate scan mode
+	if (gMode == 0) {
+		stt->doEmitionStartScanIP();
+		startIPScan();
+	}
+	else if (gMode == 1) {
+		stt->doEmitionStartScanDNS();
+		startDNSScan();
+	}
+	else {
+		stt->doEmitionStartScanImport();
+		startImportScan();
+	}
 
-	if (gMode == 0) startIPScan();
-	else if (gMode == 1) startDNSScan();
-	else startImportScan();
+	stt->doEmitionYellowFoundData("Scan completed. Stopping threads...");
 
-	stt->doEmitionYellowFoundData("Stopping threads...");
-
-	while (cons > 0 || jsonArr->size() > 0) Sleep(2000);
+	// Wait for all threads to finish, with progress indication
+	QTextStream waitOut(stdout);
+	int waitCount = 0;
+	const int MAX_WAIT_SECONDS = 60; // Maximum 60 seconds wait
+	while ((cons > 0 || jsonArr->size() > 0) && waitCount < MAX_WAIT_SECONDS && globalScanFlag) {
+		Sleep(1000);
+		waitCount++;
+		if (waitCount % 5 == 0 && (cons > 0 || jsonArr->size() > 0)) {
+			waitOut << "\r[INFO] Waiting for threads to finish... (" << cons << " active, " 
+			    << jsonArr->size() << " pending)    " << Qt::flush;
+		}
+	}
+	
+	waitOut << "\r" << QString(70, ' ') << "\r"; // Clear the waiting message line
+	
+	if (waitCount >= MAX_WAIT_SECONDS && (cons > 0 || jsonArr->size() > 0)) {
+		stt->doEmitionYellowFoundData("Warning: Some threads did not finish in time. Forcing cleanup...");
+	}
+	
 	MainStarter::saveBK();
 	saveBackup = false;
+	
+	// Clean up threads properly
+	Threader::cleanUp();
 	
 	thread_cleanup();
 

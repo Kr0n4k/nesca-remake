@@ -9,6 +9,7 @@
 #include <ctime>
 #include <chrono>
 #include <QFileInfo>
+#include <QProcess>
 #include "externData.h"
 #include "Utils.h"
 
@@ -80,6 +81,108 @@ void setupSignalHandlers() {
 	std::signal(SIGTERM, signalHandler);
 }
 
+// Run IP range generator
+bool runGenerator(const QString& outputFile = "all_russia_combined.txt", 
+                  const QString& directory = "russia_ranges", 
+                  bool generateConfigs = false) {
+	QTextStream out(stdout);
+	const char* ANSI_CYAN = "\033[36m";
+	const char* ANSI_GREEN = "\033[32m";
+	const char* ANSI_YELLOW = "\033[33m";
+	const char* ANSI_RESET = "\033[0m";
+	
+	out << ANSI_CYAN << "[GENERATOR]" << ANSI_RESET << " Starting Russia IP ranges generator..." << Qt::endl;
+	
+	// Try to find generator.py
+	QFileInfo generatorFile("generator.py");
+	if (!generatorFile.exists()) {
+		QTextStream err(stderr);
+		err << "[ERROR] generator.py not found in current directory" << Qt::endl;
+		return false;
+	}
+	
+	if (!generatorFile.isReadable()) {
+		QTextStream err(stderr);
+		err << "[ERROR] generator.py is not readable" << Qt::endl;
+		return false;
+	}
+	
+	// Check if Python 3 is available
+	QProcess pythonCheck;
+	pythonCheck.start("python3", QStringList() << "--version");
+	if (!pythonCheck.waitForFinished(3000)) {
+		QTextStream err(stderr);
+		err << "[ERROR] Python 3 is not available. Please install python3" << Qt::endl;
+		return false;
+	}
+	
+	// Build command
+	QStringList args;
+	args << "generator.py";
+	args << "-o" << outputFile;
+	args << "-d" << directory;
+	if (generateConfigs) {
+		args << "-c";
+	}
+	
+	// Run generator
+	QProcess generator;
+	generator.setProcessChannelMode(QProcess::MergedChannels);
+	
+	out << ANSI_CYAN << "[GENERATOR]" << ANSI_RESET << " Running generator..." << Qt::endl;
+	generator.start("python3", args);
+	
+	if (!generator.waitForStarted()) {
+		QTextStream err(stderr);
+		err << "[ERROR] Failed to start generator.py" << Qt::endl;
+		return false;
+	}
+	
+	// Read output in real-time
+	QByteArray output;
+	while (generator.waitForReadyRead(1000)) {
+		output.append(generator.readAll());
+	}
+	
+	// Wait for completion (with timeout of 5 minutes)
+	if (!generator.waitForFinished(300000)) {
+		QTextStream err(stderr);
+		err << "[ERROR] Generator timed out (5 minutes)" << Qt::endl;
+		generator.kill();
+		return false;
+	}
+	
+	// Get final output
+	output.append(generator.readAllStandardOutput());
+	output.append(generator.readAllStandardError());
+	
+	// Print output
+	QTextStream outputStream(output);
+	while (!outputStream.atEnd()) {
+		QString line = outputStream.readLine();
+		out << line << Qt::endl;
+	}
+	
+	if (generator.exitCode() != 0) {
+		QTextStream err(stderr);
+		err << "[ERROR] Generator failed with exit code: " << generator.exitCode() << Qt::endl;
+		return false;
+	}
+	
+	// Verify output file was created
+	QFileInfo outputInfo(outputFile);
+	if (!outputInfo.exists()) {
+		QTextStream err(stderr);
+		err << "[ERROR] Generator did not create output file: " << outputFile << Qt::endl;
+		return false;
+	}
+	
+	out << ANSI_GREEN << "[OK]" << ANSI_RESET << " Generator completed successfully" << Qt::endl;
+	out << ANSI_CYAN << "[INFO]" << ANSI_RESET << " Output file: " << outputFile << Qt::endl;
+	
+	return true;
+}
+
 // Validate import file exists and is readable
 bool validateImportFile(const QString& filePath) {
 	QFileInfo fileInfo(filePath);
@@ -138,8 +241,21 @@ void printStatistics() {
 	}
 	
 	out << "Targets:         " << ANSI_CYAN << gTargetsNumber << ANSI_RESET << " total" << Qt::endl;
-	out << "Found:           " << ANSI_GREEN << found << ANSI_RESET << " nodes" << Qt::endl;
-	out << "Saved:           " << ANSI_GREEN << saved << ANSI_RESET << " nodes" << Qt::endl;
+	
+	if (found > 0) {
+		double successRate = (gTargetsNumber > 0) ? ((double)found / (double)gTargetsNumber * 100.0) : 0.0;
+		out << "Found:           " << ANSI_GREEN << found << ANSI_RESET << " nodes (" 
+		    << QString::number(successRate, 'f', 2) << "%)" << Qt::endl;
+	} else {
+		out << "Found:           " << ANSI_GREEN << found << ANSI_RESET << " nodes" << Qt::endl;
+	}
+	
+	out << "Saved:           " << ANSI_GREEN << saved << ANSI_RESET << " nodes";
+	if (found > 0) {
+		double saveRate = ((double)saved / (double)found * 100.0);
+		out << " (" << QString::number(saveRate, 'f', 1) << "%)";
+	}
+	out << Qt::endl;
 	
 	if (camerasC1 > 0 || PieBA > 0 || PieOther > 0 || PieSSH > 0) {
 		out << Qt::endl << "By Type:" << Qt::endl;
@@ -163,6 +279,8 @@ void printUsage(const char* progName) {
 	out << "  --ip IP_RANGE              IP scan mode (e.g., 192.168.1.1-192.168.1.255 or 192.168.1.0/24)" << Qt::endl;
 	out << "  --dns DNS_MASK             DNS scan mode (e.g., test[a-z])" << Qt::endl;
 	out << "  --import FILE              Import scan mode from file" << Qt::endl;
+	out << "  --generate [FILE]          Generate Russia IP ranges (default: all_russia_combined.txt)" << Qt::endl;
+	out << "  --generate-and-scan [FILE] Generate ranges and immediately start scanning" << Qt::endl;
 	out << Qt::endl;
 	out << "Options:" << Qt::endl;
 	out << "  -p, --ports PORTS          Ports to scan (comma-separated, default: " << PORTSET << ")" << Qt::endl;
@@ -170,6 +288,7 @@ void printUsage(const char* progName) {
 	out << "  --timeout SECONDS          Connection timeout in seconds (default: 3)" << Qt::endl;
 	out << "  --ping-timeout SECONDS     Ping timeout in seconds (default: 1)" << Qt::endl;
 	out << "  --tld TLD                  Top-level domain for DNS scan (default: .com)" << Qt::endl;
+	out << "  --generator-configs        Generate scan configs when using --generate" << Qt::endl;
 	out << "  -h, --help                 Show this help message" << Qt::endl;
 	out << Qt::endl;
 	out << "Note: Auto-detect uses 2x CPU cores (min: 50, max: 500 threads)" << Qt::endl;
@@ -178,7 +297,8 @@ void printUsage(const char* progName) {
 	out << "  " << progName << " --ip 192.168.1.1-192.168.1.255 -p 80,443,8080" << Qt::endl;
 	out << "  " << progName << " --dns test[a-z] --tld .com -p 80,443" << Qt::endl;
 	out << "  " << progName << " --import ip_list.txt -p 80,443 -t 200" << Qt::endl;
-	out << "  " << progName << " --import ip_list.txt -p 80,443 --threads auto" << Qt::endl;
+	out << "  " << progName << " --generate all_russia.txt" << Qt::endl;
+	out << "  " << progName << " --generate-and-scan all_russia.txt -p 80,3000,8000,37777" << Qt::endl;
 	out << "  " << progName << " --import ip_list.txt --timeout 5 --ping-timeout 2" << Qt::endl;
 }
 
@@ -201,6 +321,8 @@ int main(int argc, char *argv[])
 	QString tld = ".com";
 	bool threadsSpecified = false;
 	bool autoDetectThreads = false;
+	bool generateConfigs = false;
+	QString generateOutput = "all_russia_combined.txt";
 	
 	// Parse command line arguments
 	for (int i = 1; i < argc; i++) {
@@ -231,6 +353,21 @@ int main(int argc, char *argv[])
 				err << "Error: --import requires a file path" << Qt::endl;
 				return 1;
 			}
+		} else if (strcmp(argv[i], "--generate") == 0 || strcmp(argv[i], "-g") == 0) {
+			mode = "generate";
+			if (i + 1 < argc && argv[i + 1][0] != '-') {
+				generateOutput = QString(argv[++i]);
+			}
+		} else if (strcmp(argv[i], "--generate-and-scan") == 0) {
+			mode = "generate_and_scan";
+			if (i + 1 < argc && argv[i + 1][0] != '-') {
+				generateOutput = QString(argv[++i]);
+				target = generateOutput;
+			} else {
+				target = generateOutput;
+			}
+		} else if (strcmp(argv[i], "--generator-configs") == 0) {
+			generateConfigs = true;
 		} else if (strcmp(argv[i], "-p") == 0 || strcmp(argv[i], "--ports") == 0) {
 			if (i + 1 < argc) {
 				ports = QString(argv[++i]);
@@ -307,14 +444,46 @@ int main(int argc, char *argv[])
 		}
 	}
 	
+	// Handle generation mode
+	if (mode == "generate") {
+		if (!runGenerator(generateOutput, "russia_ranges", generateConfigs)) {
+			return 1;
+		}
+		return 0;
+	}
+	
+	// Handle generate-and-scan mode
+	if (mode == "generate_and_scan") {
+		QTextStream out(stdout);
+		const char* ANSI_CYAN = "\033[36m";
+		const char* ANSI_RESET = "\033[0m";
+		
+		// Check if file already exists
+		QFileInfo fileInfo(target);
+		if (fileInfo.exists()) {
+			out << ANSI_CYAN << "[INFO]" << ANSI_RESET << " File exists: " << target 
+			    << ", skipping generation. Use --generate to regenerate." << Qt::endl;
+		} else {
+			// Generate the file first
+			if (!runGenerator(generateOutput, "russia_ranges", generateConfigs)) {
+				QTextStream err(stderr);
+				err << "[ERROR] Failed to generate IP ranges file" << Qt::endl;
+				return 1;
+			}
+		}
+		
+		// Switch to import mode
+		mode = "import";
+	}
+	
 	if (mode.isEmpty()) {
 		QTextStream err(stderr);
-		err << "Error: No scan mode specified. Use --ip, --dns, or --import" << Qt::endl;
+		err << "Error: No scan mode specified. Use --ip, --dns, --import, or --generate" << Qt::endl;
 		err << "Use --help for usage information" << Qt::endl;
 		return 1;
 	}
 	
-	if (target.isEmpty()) {
+	if (target.isEmpty() && mode != "generate") {
 		QTextStream err(stderr);
 		err << "Error: No target specified" << Qt::endl;
 		return 1;
