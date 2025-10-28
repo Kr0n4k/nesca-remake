@@ -17,6 +17,9 @@ char gUserAgent[256] = {0};  // Empty = use default
 bool gAdaptiveScan = false;  // Adaptive thread adjustment
 bool gSmartScan = false;  // Smart port prioritization
 int gBatchSize = 0;  // 0 = no batching, otherwise batch size for processing
+bool gDeepScan = false;  // Deep scan after device detection
+bool gVulnScan = false;  // Vulnerability scanning
+bool gServiceVersion = false;  // Service version detection
 int gMode;
 int PieCamerasC1 = 0, PieBA = 0, PieOther = 0, PieSSH = 0;
 int camerasC1 = 0, filtered = 0, Overl = 0, Alive = 0, saved = 0, other = 0, ssh = 0;

@@ -6,7 +6,7 @@
 #include <QString>
 
 ProgressMonitor::ProgressMonitor(QObject *parent) 
-    : QThread(parent), shouldStop(false) {
+    : QThread(parent), shouldStop(false), useColor(true), showProgressBar(false) {
     startTime = std::chrono::steady_clock::now();
 }
 
@@ -45,11 +45,11 @@ void ProgressMonitor::printProgress() {
     }
     
     // ANSI color codes
-    const char* ANSI_RESET = "\033[0m";
-    const char* ANSI_CYAN = "\033[36m";
-    const char* ANSI_GREEN = "\033[32m";
-    const char* ANSI_YELLOW = "\033[33m";
-    const char* ANSI_BOLD = "\033[1m";
+    const char* ANSI_RESET = useColor ? "\033[0m" : "";
+    const char* ANSI_CYAN = useColor ? "\033[36m" : "";
+    const char* ANSI_GREEN = useColor ? "\033[32m" : "";
+    const char* ANSI_YELLOW = useColor ? "\033[33m" : "";
+    const char* ANSI_BOLD = useColor ? "\033[1m" : "";
     
     // Clear line and print progress
     // Use QString for proper formatting with large numbers
@@ -78,6 +78,48 @@ void ProgressMonitor::printProgress() {
     }
     
     printf("   "); // Extra spaces to clear any leftover characters
+    
+    // Print progress bar if enabled
+    if (showProgressBar && gTargetsNumber > 0) {
+        printf("\n");
+        printProgressBar(scanned, gTargetsNumber);
+    }
+    
+    fflush(stdout);
+}
+
+void ProgressMonitor::printProgressBar(int current, int total, int width) {
+    if (total == 0) return;
+    
+    float percentage = (float)current / (float)total;
+    int filled = (int)(percentage * width);
+    int empty = width - filled;
+    
+    QString bar;
+    if (useColor) {
+        const char* ANSI_GREEN = "\033[32m";
+        const char* ANSI_YELLOW = "\033[33m";
+        const char* ANSI_RESET = "\033[0m";
+        
+        bar += ANSI_GREEN;
+        for (int i = 0; i < filled; ++i) {
+            bar += "█";
+        }
+        bar += ANSI_YELLOW;
+        for (int i = 0; i < empty; ++i) {
+            bar += "░";
+        }
+        bar += ANSI_RESET;
+    } else {
+        for (int i = 0; i < filled; ++i) {
+            bar += "=";
+        }
+        for (int i = 0; i < empty; ++i) {
+            bar += "-";
+        }
+    }
+    
+    printf("\r[%s] %.1f%% (%d/%d)   ", bar.toUtf8().constData(), percentage * 100, current, total);
     fflush(stdout);
 }
 

@@ -45,7 +45,7 @@ extern int found, indexIP, gMode,
     ssh, globalPinger, gPingTimeout,
 	cIndex, gMaxRate, gRetries, gBatchSize;
 extern unsigned int Activity;
-extern bool gVerifySSL, gAdaptiveScan, gSmartScan;
+extern bool gVerifySSL, gAdaptiveScan, gSmartScan, gDeepScan, gVulnScan, gServiceVersion;
 extern char trcSrv[256], trcScr[256], trcProxy[128], trcPersKey[64],
     trcPort[32], trcSrvPortLine[32],
     gTLD[128], gPorts[1024],

@@ -21,6 +21,7 @@
 #include <Utils.h>
 #include <mainResources.h>
 #include <DeviceIdentifier.h>
+#include <InteractiveMode.h>
 
 // Signal handler for graceful shutdown in monitor mode
 volatile bool gSignalReceived = false;
@@ -74,6 +75,15 @@ void printUsage(const char* progName) {
 	out << "  --monitor [INTERVAL]         Enable continuous network monitoring mode (default: 300 seconds)" << Qt::endl;
 	out << "  --diff                       Show changes from last scan (requires --monitor)" << Qt::endl;
 	out << "  --alert-new-device           Alert when new devices are detected (requires --monitor)" << Qt::endl;
+	out << "  --color                      Enable colored output with progress bar" << Qt::endl;
+	out << "  --interactive                Run in interactive mode with menu" << Qt::endl;
+	out << "  --quick-camera-scan          Quick scan for IP cameras (ports 80,8080,554)" << Qt::endl;
+	out << "  --quick-server-scan          Quick scan for servers (ports 22,80,443,3389)" << Qt::endl;
+	out << "  --quick-network-scan         Quick scan for network equipment (ports 80,443,8080)" << Qt::endl;
+	out << "  --quick-iot-scan             Quick scan for IoT devices (ports 80,8080,8081)" << Qt::endl;
+	out << "  --deep-scan                   Deep scan: scan subdomains/paths after device detection" << Qt::endl;
+	out << "  --vuln-scan                   Scan for known vulnerabilities (CVE database)" << Qt::endl;
+	out << "  --service-version             Detect exact service versions" << Qt::endl;
 	out << "  -h, --help                   Show this help message" << Qt::endl;
 	out << Qt::endl;
 	out << "Examples:" << Qt::endl;
@@ -91,6 +101,11 @@ void printUsage(const char* progName) {
 	out << "  " << progName << " --ip 192.168.1.0/24 --profile full-scan --ports 80,443" << Qt::endl;
 	out << "  " << progName << " --ip 192.168.1.0/24 --monitor 600" << Qt::endl;
 	out << "  " << progName << " --ip 192.168.1.0/24 --monitor --diff --alert-new-device" << Qt::endl;
+	out << "  " << progName << " --ip 192.168.1.0/24 --color" << Qt::endl;
+	out << "  " << progName << " --interactive" << Qt::endl;
+	out << "  " << progName << " --quick-camera-scan" << Qt::endl;
+	out << "  " << progName << " --quick-server-scan" << Qt::endl;
+	out << "  " << progName << " --ip 192.168.1.0/24 --deep-scan --vuln-scan --service-version" << Qt::endl;
 	out << "  " << progName << " --export-only" << Qt::endl;
 	out << "  " << progName << " --export-only results_2025.01.15_target" << Qt::endl;
 	out << "  " << progName << " --ip 192.168.1.0/24 --no-export" << Qt::endl;
@@ -104,6 +119,7 @@ int main(int argc, char *argv[])
 	signal(SIGINT, signalHandler);
 	signal(SIGTERM, signalHandler);
 	
+	// Variables declaration
 	QString mode;
 	QString target;
 	QString ports = PORTSET;
@@ -124,6 +140,32 @@ int main(int argc, char *argv[])
 	int monitorInterval = 300;  // Default: 5 minutes
 	bool showDiff = false;
 	bool alertNewDevice = false;
+	bool useColor = false;
+	bool interactiveMode = false;
+	bool deepScan = false;
+	bool vulnScan = false;
+	bool serviceVersion = false;
+	
+	// Check for interactive mode or quick presets first
+	for (int i = 1; i < argc; i++) {
+		if (strcmp(argv[i], "--interactive") == 0) {
+			interactiveMode = true;
+			break;
+		} else if (strcmp(argv[i], "--quick-camera-scan") == 0) {
+			return InteractiveMode::runQuickPreset("quick-camera-scan", app) ? 0 : 1;
+		} else if (strcmp(argv[i], "--quick-server-scan") == 0) {
+			return InteractiveMode::runQuickPreset("quick-server-scan", app) ? 0 : 1;
+		} else if (strcmp(argv[i], "--quick-network-scan") == 0) {
+			return InteractiveMode::runQuickPreset("quick-network-scan", app) ? 0 : 1;
+		} else if (strcmp(argv[i], "--quick-iot-scan") == 0) {
+			return InteractiveMode::runQuickPreset("quick-iot-scan", app) ? 0 : 1;
+		}
+	}
+	
+	// Run interactive mode if requested
+	if (interactiveMode) {
+		return InteractiveMode::run(app, argc, argv);
+	}
 	std::chrono::steady_clock::time_point scanStartTime;
 	
 	ConfigManager configManager;
@@ -381,6 +423,25 @@ int main(int argc, char *argv[])
 			showDiff = true;
 		} else if (strcmp(argv[i], "--alert-new-device") == 0) {
 			alertNewDevice = true;
+		} else if (strcmp(argv[i], "--color") == 0) {
+			useColor = true;
+			InteractiveMode::enableColorOutput(true);
+		} else if (strcmp(argv[i], "--interactive") == 0) {
+			// Already handled above, skip
+		} else if (strcmp(argv[i], "--quick-camera-scan") == 0 || 
+		           strcmp(argv[i], "--quick-server-scan") == 0 ||
+		           strcmp(argv[i], "--quick-network-scan") == 0 ||
+		           strcmp(argv[i], "--quick-iot-scan") == 0) {
+			// Already handled above, skip
+		} else if (strcmp(argv[i], "--deep-scan") == 0) {
+			deepScan = true;
+			gDeepScan = true;
+		} else if (strcmp(argv[i], "--vuln-scan") == 0) {
+			vulnScan = true;
+			gVulnScan = true;
+		} else if (strcmp(argv[i], "--service-version") == 0) {
+			serviceVersion = true;
+			gServiceVersion = true;
 		} else if (strcmp(argv[i], "-h") == 0 || strcmp(argv[i], "--help") == 0) {
 			printUsage(argv[0]);
 			return 0;
@@ -666,10 +727,16 @@ int main(int argc, char *argv[])
 	ProgressMonitor *progressMonitor = nullptr;
 	if (liveStats && !exportOnly) {
 		progressMonitor = new ProgressMonitor();
+		progressMonitor->setColorOutput(useColor);
+		progressMonitor->setProgressBar(useColor);  // Show progress bar when color is enabled
 		progressMonitor->start();
 		QTextStream out(stdout);
 		out << Qt::endl << "[INFO] Starting scan with live statistics..." << Qt::endl;
-		out << "[INFO] Progress will be updated every 2 seconds" << Qt::endl << Qt::endl;
+		out << "[INFO] Progress will be updated every 2 seconds" << Qt::endl;
+		if (useColor) {
+			out << "[INFO] Colored output and progress bar enabled" << Qt::endl;
+		}
+		out << Qt::endl;
 	}
 	
 	// Start scan in a thread

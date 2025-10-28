@@ -90,7 +90,11 @@ SOURCES += src/network/Connector.cpp \
            src/network/base64.cpp \
            src/network/ProgressMonitor.cpp \
            src/network/ConfigManager.cpp \
-           src/network/NetworkMonitor.cpp
+           src/network/NetworkMonitor.cpp \
+           src/ui/InteractiveMode.cpp \
+           src/detectors/DeepScanner.cpp \
+           src/detectors/VulnerabilityScanner.cpp \
+           src/detectors/ServiceVersionDetector.cpp
 
 HEADERS += src/network/Connector.h \
            src/network/Utils.h \
@@ -102,7 +106,11 @@ HEADERS += src/network/Connector.h \
            src/network/base64.h \
            src/network/ProgressMonitor.h \
            src/network/ConfigManager.h \
-           src/network/NetworkMonitor.h
+           src/network/NetworkMonitor.h \
+           src/ui/InteractiveMode.h \
+           src/detectors/DeepScanner.h \
+           src/detectors/VulnerabilityScanner.h \
+           src/detectors/ServiceVersionDetector.h
 
 # UI components (optional, for GUI build)
 # Uncomment for GUI version:

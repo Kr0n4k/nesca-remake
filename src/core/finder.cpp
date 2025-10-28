@@ -16,6 +16,10 @@
 #include <MainStarter.h>
 #include <FingerprintScanner.h>
 #include <DeviceIdentifier.h>
+#include <DeepScanner.h>
+#include <VulnerabilityScanner.h>
+#include <ServiceVersionDetector.h>
+#include <QTextStream>
 #include <QTextCodec>
 #if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
 #include <QtCore5Compat/QTextCodec>
@@ -3018,6 +3022,102 @@ void parseFlag(int flag, char* ip, char *ipRaw, int port, std::string *buff, con
 		++PieCamerasC1;
 		++camerasC1;
 		putInFile(flag, ip, port, size, header.c_str(), cp);
+		
+		// Deep scan if enabled
+		if (gDeepScan) {
+			QString deviceIP = QString::fromUtf8(ip);
+			QString deviceType = "camera";
+			QString manufacturer = "";
+			
+			// Extract manufacturer from header if possible
+			QString headerStr = QString::fromStdString(header);
+			if (headerStr.contains("Hikvision", Qt::CaseInsensitive)) {
+				manufacturer = "Hikvision";
+			} else if (headerStr.contains("Dahua", Qt::CaseInsensitive)) {
+				manufacturer = "Dahua";
+			} else if (headerStr.contains("Axis", Qt::CaseInsensitive)) {
+				manufacturer = "Axis";
+			}
+			
+			// Perform deep scan
+			DeepScanResult deepResult = DeepScanner::scanDevice(deviceIP, port, deviceType, manufacturer);
+			
+			if (!deepResult.discoveredPaths.isEmpty() || !deepResult.firmwareVersion.isEmpty()) {
+				QString deepInfo = QString("\n[Deep Scan] ");
+				if (!deepResult.discoveredPaths.isEmpty()) {
+					deepInfo += QString("Found %1 endpoints: ").arg(deepResult.discoveredPaths.size());
+					QStringList firstFew = deepResult.discoveredPaths.mid(0, 5);
+					deepInfo += firstFew.join(", ");
+					if (deepResult.discoveredPaths.size() > 5) {
+						deepInfo += QString(" (+%1 more)").arg(deepResult.discoveredPaths.size() - 5);
+					}
+				}
+				if (!deepResult.firmwareVersion.isEmpty()) {
+					deepInfo += QString("\n[Firmware] %1").arg(deepResult.firmwareVersion);
+				}
+				
+				// Append deep scan results
+				std::string deepInfoStd = deepInfo.toStdString();
+				putInFile(flag, ip, port, size, deepInfoStd.c_str(), cp);
+			}
+		}
+		
+		// Vulnerability scan if enabled
+		if (gVulnScan) {
+			QString deviceIP = QString::fromUtf8(ip);
+			QString deviceType = "camera";
+			QString manufacturer = "";
+			QString firmware = "";
+			
+			// Try to extract manufacturer and firmware from header
+			QString headerStr = QString::fromStdString(header);
+			if (headerStr.contains("Hikvision", Qt::CaseInsensitive)) {
+				manufacturer = "Hikvision";
+			} else if (headerStr.contains("Dahua", Qt::CaseInsensitive)) {
+				manufacturer = "Dahua";
+			}
+			
+			VulnScanResult vulnResult = VulnerabilityScanner::scanDevice(deviceIP, port, deviceType, manufacturer, "", firmware);
+			
+			if (vulnResult.criticalCount > 0 || vulnResult.highCount > 0) {
+				QString vulnInfo = QString("\n[Vuln Scan] Found %1 vulnerabilities: ").arg(vulnResult.vulnerabilities.size());
+				if (vulnResult.criticalCount > 0) {
+					vulnInfo += QString("%1 Critical, ").arg(vulnResult.criticalCount);
+				}
+				if (vulnResult.highCount > 0) {
+					vulnInfo += QString("%1 High").arg(vulnResult.highCount);
+				}
+				for (const Vulnerability& vuln : vulnResult.vulnerabilities) {
+					if (vuln.confirmed && (vuln.severity == "Critical" || vuln.severity == "High")) {
+						vulnInfo += QString("\n  - %1 (%2): %3").arg(vuln.cveId, vuln.severity, vuln.title);
+					}
+				}
+				
+				std::string vulnInfoStd = vulnInfo.toStdString();
+				putInFile(flag, ip, port, size, vulnInfoStd.c_str(), cp);
+			}
+		}
+		
+		// Service version detection if enabled
+		if (gServiceVersion) {
+			QString deviceIP = QString::fromUtf8(ip);
+			VersionScanResult versionResult = ServiceVersionDetector::detectVersions(deviceIP, port);
+			
+			if (!versionResult.detectedServices.isEmpty()) {
+				QString versionInfo = "\n[Service Version] ";
+				bool first = true;
+				for (const ServiceVersion& sv : versionResult.detectedServices) {
+					if (!sv.version.isEmpty()) {
+						if (!first) versionInfo += ", ";
+						versionInfo += QString("%1: %2").arg(sv.serviceName, sv.version);
+						first = false;
+					}
+				}
+				
+				std::string versionInfoStd = versionInfo.toStdString();
+				putInFile(flag, ip, port, size, versionInfoStd.c_str(), cp);
+			}
+		}
 	}
 	//Other
 	else if (flag == 1) {
