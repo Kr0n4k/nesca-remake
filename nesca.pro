@@ -41,7 +41,10 @@ SOURCES +=\
     IPRandomizer.cpp \
     HikvisionLogin.cpp \
     RTSP.cpp \
-    IPCAuth.cpp
+    IPCAuth.cpp \
+    ResultExporter.cpp \
+    DeviceIdentifier.cpp \
+    ProgressMonitor.cpp
 
 # GUI files excluded for console build:
 #    nesca_3.cpp \
@@ -78,7 +81,10 @@ HEADERS  += base64.h \
     IPRandomizer.h \
     HikvisionLogin.h \
     RTSP.h \
-    IPCAuth.h
+    IPCAuth.h \
+    ResultExporter.h \
+    DeviceIdentifier.h \
+    ProgressMonitor.h
 
 # GUI headers excluded for console build:
 #    nesca_3.h \
