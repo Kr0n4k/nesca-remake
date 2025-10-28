@@ -1,5 +1,5 @@
-#include "STh.h"
-#include "MainStarter.h"
+#include <STh.h>
+#include <MainStarter.h>
 #include <QCoreApplication>
 #include <QTextStream>
 #include <iostream>
@@ -10,8 +10,8 @@
 #include <chrono>
 #include <QFileInfo>
 #include <QProcess>
-#include "externData.h"
-#include "Utils.h"
+#include <externData.h>
+#include <Utils.h>
 
 // Initialize global stt object (defined in nesca_3.cpp, but we need it here too)
 STh *stt = nullptr;
@@ -285,7 +285,14 @@ void printUsage(const char* progName) {
 	out << "Options:" << Qt::endl;
 	out << "  -p, --ports PORTS          Ports to scan (comma-separated, default: " << PORTSET << ")" << Qt::endl;
 	out << "  -t, --threads N            Number of threads (1-2000, default: auto-detect)" << Qt::endl;
-	out << "  --timeout SECONDS          Connection timeout in seconds (default: 3)" << Qt::endl;
+	out << "  --timeout MS               Connection timeout in milliseconds (default: 3000)" << Qt::endl;
+	out << "  --max-rate RATE            Max requests per second (0 = unlimited, default: 0)" << Qt::endl;
+	out << "  --retries N                Number of retries on failure (default: 0)" << Qt::endl;
+	out << "  --verify-ssl               Verify SSL certificates (default: disabled)" << Qt::endl;
+	out << "  --user-agent STRING        Custom User-Agent string" << Qt::endl;
+	out << "  --adaptive                 Enable adaptive thread adjustment based on network load" << Qt::endl;
+	out << "  --smart-scan               Prioritize popular ports for found IPs" << Qt::endl;
+	out << "  --batch-size N             Batch size for mass scanning (default: disabled)" << Qt::endl;
 	out << "  --ping-timeout SECONDS     Ping timeout in seconds (default: 1)" << Qt::endl;
 	out << "  --tld TLD                  Top-level domain for DNS scan (default: .com)" << Qt::endl;
 	out << "  --generator-configs        Generate scan configs when using --generate" << Qt::endl;
@@ -299,7 +306,10 @@ void printUsage(const char* progName) {
 	out << "  " << progName << " --import ip_list.txt -p 80,443 -t 200" << Qt::endl;
 	out << "  " << progName << " --generate all_russia.txt" << Qt::endl;
 	out << "  " << progName << " --generate-and-scan all_russia.txt -p 80,3000,8000,37777" << Qt::endl;
-	out << "  " << progName << " --import ip_list.txt --timeout 5 --ping-timeout 2" << Qt::endl;
+	out << "  " << progName << " --import ip_list.txt --timeout 5000 --ping-timeout 2" << Qt::endl;
+	out << "  " << progName << " --ip 192.168.1.0/24 --max-rate 1000 --retries 2 --verify-ssl" << Qt::endl;
+	out << "  " << progName << " --ip 10.0.0.0/24 --user-agent \"Nesca-Scanner/2.0\" --timeout 5000" << Qt::endl;
+	out << "  " << progName << " --ip 192.168.1.0/24 --adaptive --smart-scan --batch-size 50" << Qt::endl;
 }
 
 int main(int argc, char *argv[])
@@ -407,15 +417,83 @@ int main(int argc, char *argv[])
 			if (i + 1 < argc) {
 				bool ok;
 				int timeout = QString(argv[++i]).toInt(&ok);
-				if (!ok || timeout < 1 || timeout > 60) {
+				if (!ok || timeout < 1 || timeout > 60000) {
 					QTextStream err(stderr);
-					err << "Error: --timeout must be between 1 and 60 seconds" << Qt::endl;
+					err << "Error: --timeout must be between 1 and 60000 milliseconds" << Qt::endl;
 					return 1;
 				}
-				gTimeOut = timeout;
+				// Convert milliseconds to seconds for curl (round up to at least 1 second)
+				gTimeOut = (timeout + 999) / 1000;
+				if (gTimeOut < 1) gTimeOut = 1;
 			} else {
 				QTextStream err(stderr);
-				err << "Error: --timeout requires a number" << Qt::endl;
+				err << "Error: --timeout requires a number (milliseconds)" << Qt::endl;
+				return 1;
+			}
+		} else if (strcmp(argv[i], "--max-rate") == 0) {
+			if (i + 1 < argc) {
+				bool ok;
+				int maxRate = QString(argv[++i]).toInt(&ok);
+				if (!ok || maxRate < 0 || maxRate > 100000) {
+					QTextStream err(stderr);
+					err << "Error: --max-rate must be between 0 and 100000 requests per second" << Qt::endl;
+					return 1;
+				}
+				gMaxRate = maxRate;
+			} else {
+				QTextStream err(stderr);
+				err << "Error: --max-rate requires a number" << Qt::endl;
+				return 1;
+			}
+		} else if (strcmp(argv[i], "--retries") == 0) {
+			if (i + 1 < argc) {
+				bool ok;
+				int retries = QString(argv[++i]).toInt(&ok);
+				if (!ok || retries < 0 || retries > 10) {
+					QTextStream err(stderr);
+					err << "Error: --retries must be between 0 and 10" << Qt::endl;
+					return 1;
+				}
+				gRetries = retries;
+			} else {
+				QTextStream err(stderr);
+				err << "Error: --retries requires a number" << Qt::endl;
+				return 1;
+			}
+		} else if (strcmp(argv[i], "--verify-ssl") == 0) {
+			gVerifySSL = true;
+		} else if (strcmp(argv[i], "--adaptive") == 0) {
+			gAdaptiveScan = true;
+		} else if (strcmp(argv[i], "--smart-scan") == 0) {
+			gSmartScan = true;
+		} else if (strcmp(argv[i], "--batch-size") == 0) {
+			if (i + 1 < argc) {
+				bool ok;
+				int batchSize = QString(argv[++i]).toInt(&ok);
+				if (!ok || batchSize < 1 || batchSize > 10000) {
+					QTextStream err(stderr);
+					err << "Error: --batch-size must be between 1 and 10000" << Qt::endl;
+					return 1;
+				}
+				gBatchSize = batchSize;
+			} else {
+				QTextStream err(stderr);
+				err << "Error: --batch-size requires a number" << Qt::endl;
+				return 1;
+			}
+		} else if (strcmp(argv[i], "--user-agent") == 0) {
+			if (i + 1 < argc) {
+				QString ua = QString(argv[++i]);
+				if (ua.length() > 255) {
+					QTextStream err(stderr);
+					err << "Error: --user-agent string too long (max 255 characters)" << Qt::endl;
+					return 1;
+				}
+				strncpy(gUserAgent, ua.toLocal8Bit().data(), sizeof(gUserAgent) - 1);
+				gUserAgent[sizeof(gUserAgent) - 1] = '\0';
+			} else {
+				QTextStream err(stderr);
+				err << "Error: --user-agent requires a string" << Qt::endl;
 				return 1;
 			}
 		} else if (strcmp(argv[i], "--ping-timeout") == 0) {
@@ -557,8 +635,29 @@ int main(int argc, char *argv[])
 	}
 	
 	// Display configuration summary (reuse ANSI constants from above)
-	out << ANSI_CYAN << "[INFO]" << ANSI_RESET << " Timeout: " << gTimeOut << "s, Ping timeout: " << gPingTimeout << "s" << Qt::endl;
-	out << Qt::endl;
+	out << ANSI_CYAN << "[INFO]" << ANSI_RESET << " Timeout: " << (gTimeOut * 1000) << "ms, Ping timeout: " << gPingTimeout << "s";
+	if (gMaxRate > 0) {
+		out << ", Max rate: " << gMaxRate << " req/s";
+	}
+	if (gRetries > 0) {
+		out << ", Retries: " << gRetries;
+	}
+	if (gVerifySSL) {
+		out << ", SSL verification: enabled";
+	}
+	if (gUserAgent[0] != '\0') {
+		out << ", User-Agent: " << gUserAgent;
+	}
+	if (gAdaptiveScan) {
+		out << ", Adaptive: enabled";
+	}
+	if (gSmartScan) {
+		out << ", Smart scan: enabled";
+	}
+	if (gBatchSize > 0) {
+		out << ", Batch size: " << gBatchSize;
+	}
+	out << Qt::endl << Qt::endl;
 	
 	// Start scan in a thread
 	stt->start();

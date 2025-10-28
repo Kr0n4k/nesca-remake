@@ -131,8 +131,8 @@ HEADERS += src/network/Connector.h \
 #FORMS += src/ui/nesca_3.ui
 #RESOURCES += src/ui/nesca_3.qrc
 
-# Alternative console entry point (commented out - use main.cpp instead)
-#SOURCES += main_console.cpp
+# Alternative console entry point
+SOURCES += main_console.cpp
 
 OTHER_FILES += \
     nesca_3.rc
