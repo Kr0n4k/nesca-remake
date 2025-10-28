@@ -1,10 +1,10 @@
-# Nesca v2r - Network Scanner & Device Discovery
+# Nesca Remake - Network Scanner & Device Discovery
 
 [![License](https://img.shields.io/badge/license-Unlicense-blue.svg)](LICENSE)
 [![Qt](https://img.shields.io/badge/Qt-5.15+-green.svg)](https://www.qt.io/)
 [![C++](https://img.shields.io/badge/C%2B%2B-11-orange.svg)](https://isocpp.org/)
 
-**Легендарный сетевой сканер для поиска IP-камер, серверов и сетевых устройств**
+**Легендарный ремейк сетевого сканера для поиска IP-камер, серверов и сетевых устройств**
 
 Nesca — мощный инструмент для сканирования сетей, обнаружения IP-камер, серверов и других сетевых устройств с поддержкой автоматического определения типов устройств, экспорта результатов и живых статистик.
 
