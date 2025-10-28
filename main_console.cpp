@@ -5,6 +5,10 @@
 #include <iostream>
 #include <cstring>
 #include <thread>
+#include <csignal>
+#include <ctime>
+#include <chrono>
+#include <QFileInfo>
 #include "externData.h"
 #include "Utils.h"
 
@@ -13,6 +17,10 @@ STh *stt = nullptr;
 
 // Initialize global scan flag
 bool globalScanFlag = false;
+
+// Global variables for graceful shutdown and statistics
+static volatile bool g_interrupted = false;
+static std::chrono::steady_clock::time_point g_startTime;
 
 // Helper function to get optimal thread count
 int getOptimalThreadCount() {
@@ -49,6 +57,104 @@ bool setThreadCount(int threads, bool autoDetect) {
 	return true;
 }
 
+// Signal handler for graceful shutdown
+void signalHandler(int sig) {
+	if (sig == SIGINT || sig == SIGTERM) {
+		if (!g_interrupted) {
+			g_interrupted = true;
+			QTextStream out(stdout);
+			out << Qt::endl << "\033[33m[WARN] Interrupt signal received. Stopping scan gracefully...\033[0m" << Qt::endl;
+			globalScanFlag = false;
+		} else {
+			// Second interrupt - force exit
+			QTextStream err(stderr);
+			err << "\n\033[31m[ERROR] Force exit\033[0m" << Qt::endl;
+			exit(1);
+		}
+	}
+}
+
+// Setup signal handlers
+void setupSignalHandlers() {
+	std::signal(SIGINT, signalHandler);
+	std::signal(SIGTERM, signalHandler);
+}
+
+// Validate import file exists and is readable
+bool validateImportFile(const QString& filePath) {
+	QFileInfo fileInfo(filePath);
+	
+	if (!fileInfo.exists()) {
+		QTextStream err(stderr);
+		err << "[ERROR] File does not exist: " << filePath << Qt::endl;
+		return false;
+	}
+	
+	if (!fileInfo.isFile()) {
+		QTextStream err(stderr);
+		err << "[ERROR] Path is not a file: " << filePath << Qt::endl;
+		return false;
+	}
+	
+	if (!fileInfo.isReadable()) {
+		QTextStream err(stderr);
+		err << "[ERROR] File is not readable: " << filePath << Qt::endl;
+		return false;
+	}
+	
+	if (fileInfo.size() == 0) {
+		QTextStream err(stderr);
+		err << "[WARN] Warning: File is empty: " << filePath << Qt::endl;
+	}
+	
+	return true;
+}
+
+// Print detailed statistics at the end
+void printStatistics() {
+	QTextStream out(stdout);
+	const char* ANSI_CYAN = "\033[36m";
+	const char* ANSI_GREEN = "\033[32m";
+	const char* ANSI_YELLOW = "\033[33m";
+	const char* ANSI_BOLD = "\033[1m";
+	const char* ANSI_RESET = "\033[0m";
+	
+	auto endTime = std::chrono::steady_clock::now();
+	auto duration = std::chrono::duration_cast<std::chrono::seconds>(endTime - g_startTime).count();
+	
+	out << Qt::endl << ANSI_BOLD << ANSI_CYAN << "===========================================================" << ANSI_RESET << Qt::endl;
+	out << ANSI_BOLD << "Scan Statistics:" << ANSI_RESET << Qt::endl;
+	out << "-----------------------------------------------------------" << Qt::endl;
+	
+	extern int found, saved, camerasC1, PieBA, PieOther, PieSSH, Alive, filtered;
+	extern unsigned long long gTargetsNumber;
+	extern long long unsigned int gTargets;
+	
+	if (duration > 0) {
+		double ipsPerSec = (gTargetsNumber > 0 && duration > 0) ? 
+			(double)(gTargetsNumber - gTargets) / duration : 0.0;
+		out << "Duration:        " << ANSI_CYAN << duration << ANSI_RESET << " seconds" << Qt::endl;
+		out << "Speed:           " << ANSI_CYAN << QString::number(ipsPerSec, 'f', 2) << ANSI_RESET << " IPs/sec" << Qt::endl;
+	}
+	
+	out << "Targets:         " << ANSI_CYAN << gTargetsNumber << ANSI_RESET << " total" << Qt::endl;
+	out << "Found:           " << ANSI_GREEN << found << ANSI_RESET << " nodes" << Qt::endl;
+	out << "Saved:           " << ANSI_GREEN << saved << ANSI_RESET << " nodes" << Qt::endl;
+	
+	if (camerasC1 > 0 || PieBA > 0 || PieOther > 0 || PieSSH > 0) {
+		out << Qt::endl << "By Type:" << Qt::endl;
+		if (camerasC1 > 0) out << "  Cameras:         " << ANSI_YELLOW << camerasC1 << ANSI_RESET << Qt::endl;
+		if (PieBA > 0) out << "  Auth:            " << ANSI_YELLOW << PieBA << ANSI_RESET << Qt::endl;
+		if (PieOther > 0) out << "  Other:           " << ANSI_YELLOW << PieOther << ANSI_RESET << Qt::endl;
+		if (PieSSH > 0) out << "  SSH:             " << ANSI_YELLOW << PieSSH << ANSI_RESET << Qt::endl;
+	}
+	
+	if (Alive > 0) out << "Alive:           " << ANSI_GREEN << Alive << ANSI_RESET << Qt::endl;
+	if (filtered > 0) out << "Filtered:        " << ANSI_YELLOW << filtered << ANSI_RESET << Qt::endl;
+	
+	out << ANSI_BOLD << ANSI_CYAN << "===========================================================" << ANSI_RESET << Qt::endl;
+}
+
 void printUsage(const char* progName) {
 	QTextStream out(stdout);
 	out << "Usage: " << progName << " [OPTIONS]" << Qt::endl;
@@ -61,6 +167,8 @@ void printUsage(const char* progName) {
 	out << "Options:" << Qt::endl;
 	out << "  -p, --ports PORTS          Ports to scan (comma-separated, default: " << PORTSET << ")" << Qt::endl;
 	out << "  -t, --threads N            Number of threads (1-2000, default: auto-detect)" << Qt::endl;
+	out << "  --timeout SECONDS          Connection timeout in seconds (default: 3)" << Qt::endl;
+	out << "  --ping-timeout SECONDS     Ping timeout in seconds (default: 1)" << Qt::endl;
 	out << "  --tld TLD                  Top-level domain for DNS scan (default: .com)" << Qt::endl;
 	out << "  -h, --help                 Show this help message" << Qt::endl;
 	out << Qt::endl;
@@ -71,6 +179,7 @@ void printUsage(const char* progName) {
 	out << "  " << progName << " --dns test[a-z] --tld .com -p 80,443" << Qt::endl;
 	out << "  " << progName << " --import ip_list.txt -p 80,443 -t 200" << Qt::endl;
 	out << "  " << progName << " --import ip_list.txt -p 80,443 --threads auto" << Qt::endl;
+	out << "  " << progName << " --import ip_list.txt --timeout 5 --ping-timeout 2" << Qt::endl;
 }
 
 int main(int argc, char *argv[])
@@ -79,6 +188,12 @@ int main(int argc, char *argv[])
 	
 	// Initialize stt object
 	stt = new STh();
+	
+	// Setup signal handlers for graceful shutdown
+	setupSignalHandlers();
+	
+	// Record start time for statistics
+	g_startTime = std::chrono::steady_clock::now();
 	
 	QString mode;
 	QString target;
@@ -151,6 +266,36 @@ int main(int argc, char *argv[])
 				err << "Error: --tld requires a TLD" << Qt::endl;
 				return 1;
 			}
+		} else if (strcmp(argv[i], "--timeout") == 0) {
+			if (i + 1 < argc) {
+				bool ok;
+				int timeout = QString(argv[++i]).toInt(&ok);
+				if (!ok || timeout < 1 || timeout > 60) {
+					QTextStream err(stderr);
+					err << "Error: --timeout must be between 1 and 60 seconds" << Qt::endl;
+					return 1;
+				}
+				gTimeOut = timeout;
+			} else {
+				QTextStream err(stderr);
+				err << "Error: --timeout requires a number" << Qt::endl;
+				return 1;
+			}
+		} else if (strcmp(argv[i], "--ping-timeout") == 0) {
+			if (i + 1 < argc) {
+				bool ok;
+				int pingTimeout = QString(argv[++i]).toInt(&ok);
+				if (!ok || pingTimeout < 1 || pingTimeout > 10) {
+					QTextStream err(stderr);
+					err << "Error: --ping-timeout must be between 1 and 10 seconds" << Qt::endl;
+					return 1;
+				}
+				gPingTimeout = pingTimeout;
+			} else {
+				QTextStream err(stderr);
+				err << "Error: --ping-timeout requires a number" << Qt::endl;
+				return 1;
+			}
 		} else if (strcmp(argv[i], "-h") == 0 || strcmp(argv[i], "--help") == 0) {
 			printUsage(argv[0]);
 			return 0;
@@ -207,6 +352,10 @@ int main(int argc, char *argv[])
 		gTLD[sizeof(gTLD) - 1] = '\0';
 		stt->setTarget(dnsTarget);
 	} else if (mode == "import") {
+		// Validate import file before proceeding
+		if (!validateImportFile(target)) {
+			return 1;
+		}
 		stt->setMode(-1);
 		stt->setTarget(target);
 	}
@@ -230,13 +379,17 @@ int main(int argc, char *argv[])
 	
 	unsigned int hwThreads = std::thread::hardware_concurrency();
 	if (hwThreads > 0 && (autoDetectThreads || !threadsSpecified)) {
-		out << ANSI_CYAN << "ℹ" << ANSI_RESET << " Using " << ANSI_BOLD << ANSI_GREEN 
+		out << ANSI_CYAN << "[INFO]" << ANSI_RESET << " Using " << ANSI_BOLD << ANSI_GREEN 
 		    << gThreads << ANSI_RESET << " threads (auto-detected from " 
 		    << hwThreads << " CPU cores)" << Qt::endl;
 	} else {
-		out << ANSI_CYAN << "ℹ" << ANSI_RESET << " Using " << ANSI_BOLD << ANSI_GREEN 
+		out << ANSI_CYAN << "[INFO]" << ANSI_RESET << " Using " << ANSI_BOLD << ANSI_GREEN 
 		    << gThreads << ANSI_RESET << " threads" << Qt::endl;
 	}
+	
+	// Display configuration summary (reuse ANSI constants from above)
+	out << ANSI_CYAN << "[INFO]" << ANSI_RESET << " Timeout: " << gTimeOut << "s, Ping timeout: " << gPingTimeout << "s" << Qt::endl;
+	out << Qt::endl;
 	
 	// Start scan in a thread
 	stt->start();
@@ -244,10 +397,19 @@ int main(int argc, char *argv[])
 	// Wait for scan to complete
 	stt->wait();
 	
+	// Check if interrupted
+	if (g_interrupted) {
+		QTextStream out(stdout);
+		out << "\033[33m[WARN] Scan interrupted by user\033[0m" << Qt::endl;
+	}
+	
+	// Print final statistics
+	printStatistics();
+	
 	// Cleanup
 	delete stt;
 	stt = nullptr;
 	
-	return 0;
+	return g_interrupted ? 130 : 0; // Return 130 for SIGINT (standard exit code)
 }
 

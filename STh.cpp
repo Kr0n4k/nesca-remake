@@ -92,7 +92,7 @@ void STh::doEmitionChangeBARow(int index, QString loginPass, QString percentage)
 void STh::doEmitionShowRedVersion()
 {
 	QTextStream out(stdout);
-	out << ANSI_RED << ANSI_BOLD << "⚠ Version notification" << ANSI_RESET << Qt::endl;
+	out << ANSI_RED << ANSI_BOLD << "[WARN] Version notification" << ANSI_RESET << Qt::endl;
 }
 
 void STh::doEmitionStartScanIP()
@@ -131,6 +131,9 @@ void STh::doEmitionAddOutData(QString str)
 void STh::doEmitionFoundData(QString str)
 {
 	QTextStream out(stdout);
+	
+	// Print newline after progress bar before outputting found data
+	out << Qt::endl;
 	
 	// First extract URL from HTML
 	QString url = extractUrlFromHtml(str);
@@ -250,14 +253,14 @@ void STh::doEmitionRedFoundData(QString str)
 {
 	QTextStream err(stderr);
 	QString cleanStr = stripHtmlTags(str);
-	err << ANSI_RED << "✗" << ANSI_RESET << " " << cleanStr << Qt::endl;
+	err << ANSI_RED << "[ERROR]" << ANSI_RESET << " " << cleanStr << Qt::endl;
 }
 
 void STh::doEmitionGreenFoundData(QString str)
 {
 	QTextStream out(stdout);
 	QString cleanStr = stripHtmlTags(str);
-	out << ANSI_GREEN << "✓" << ANSI_RESET << " " << cleanStr << Qt::endl;
+	out << ANSI_GREEN << "[OK]" << ANSI_RESET << " " << cleanStr << Qt::endl;
 }
 
 void STh::doEmitionFoundDataCustom(QString str, QString color)
@@ -276,7 +279,7 @@ void STh::doEmitionYellowFoundData(QString str)
 {
 	QTextStream out(stdout);
 	QString cleanStr = stripHtmlTags(str);
-	out << ANSI_YELLOW << "⚠" << ANSI_RESET << " " << cleanStr << Qt::endl;
+	out << ANSI_YELLOW << "[WARN]" << ANSI_RESET << " " << cleanStr << Qt::endl;
 }
 
 void STh::doEmitionDebugFoundData(QString str)
@@ -296,7 +299,7 @@ void STh::doEmitionDataSaved(bool status)
 {
 	QTextStream out(stdout);
 	if (status) {
-		out << ANSI_GREEN << "✓ Data saved successfully" << ANSI_RESET << Qt::endl;
+		out << ANSI_GREEN << "[OK] Data saved successfully" << ANSI_RESET << Qt::endl;
 	}
 }
 
@@ -310,8 +313,12 @@ void STh::doEmitionUpdateArc(unsigned long gTargets)
 	if (gTargetsNumber > 0 && gTargets <= gTargetsNumber) {
 		unsigned long processed = gTargetsNumber - gTargets;
 		double percent = ((double)processed / (double)gTargetsNumber) * 100.0;
-		progressStr = QString("[%1/%2] %.1f%% | Remaining: %3")
-			.arg(processed).arg(gTargetsNumber).arg(percent, 0, 'f', 1).arg(gTargets);
+		QString percentStr = QString::number(percent, 'f', 1);
+		progressStr = QString("[%1/%2] %3% | Remaining: %4")
+			.arg(processed)
+			.arg(gTargetsNumber)
+			.arg(percentStr)
+			.arg(gTargets);
 	} else {
 		progressStr = QString("Remaining: %1").arg(gTargets);
 	}
