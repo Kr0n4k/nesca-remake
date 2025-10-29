@@ -1,4 +1,5 @@
 #include <Connector.h>
+#include <HikvisionLogin.h>
 #include <SSHAuth.h>
 #include <WebSocketAuth.h>
 #include <QuicAuth.h>
@@ -258,7 +259,7 @@ int pConnect(const char* ip, const int port, std::string *buffer,
 			}
 			
 			curl_easy_setopt(curl, CURLOPT_HEADER, 1L);
-			curl_easy_setopt(curl, CURLOPT_AUTOREFERER, 1L);
+			curl_easy_setopt(curl, CURLOPT_AUTOREFERER, 0L);
 			
 			// HTTP/2 support
 			if (gHttp2Enabled) {
@@ -281,10 +282,21 @@ int pConnect(const char* ip, const int port, std::string *buffer,
 			int proxyPort = std::atoi(gProxyPort);
 			if (proxyPort > 0 && proxyPort < 65535) curl_easy_setopt(curl, CURLOPT_PROXYPORT, proxyPort);
 			curl_easy_setopt(curl, CURLOPT_PROXY, gProxyIP);
-			curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
-			curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, gTimeOut);
-			curl_easy_setopt(curl, CURLOPT_TIMEOUT, gTimeOut + 3);
+			curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 0L);
+			// Use shorter timeouts for faster scanning
+			int connectTimeout = (gTimeOut > 3000) ? 3000 : gTimeOut;  // Max 3 seconds for connect
+			int totalTimeout = (gTimeOut > 5000) ? 5000 : gTimeOut + 2;  // Max 5 seconds total
+			curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, connectTimeout);
+			curl_easy_setopt(curl, CURLOPT_TIMEOUT, totalTimeout);
 			curl_easy_setopt(curl, CURLOPT_COOKIEFILE, "");
+			
+			// Additional performance optimizations
+			curl_easy_setopt(curl, CURLOPT_TCP_NODELAY, 1L);
+			curl_easy_setopt(curl, CURLOPT_TCP_FASTOPEN, 1L);
+			curl_easy_setopt(curl, CURLOPT_MAXREDIRS, 0L);  // No redirects for speed
+			curl_easy_setopt(curl, CURLOPT_DNS_CACHE_TIMEOUT, 60L);
+			curl_easy_setopt(curl, CURLOPT_FRESH_CONNECT, 1L);
+			curl_easy_setopt(curl, CURLOPT_FORBID_REUSE, 1L);
 
 			if (postData != NULL) curl_easy_setopt(curl, CURLOPT_POSTFIELDS, postData);
 
@@ -950,7 +962,7 @@ int Connector::connectToPort(char* ip, int port)
 					int timeout = 5;
 					int bTO;
 					while ((sz = recvWT(sock, tBuff, 16, timeout, &bTO)) > 0) {
-						memcpy(buffer.data() + offset, tBuff, sz);
+                                                memcpy(const_cast<char*>(buffer.data()) + offset, tBuff, sz);
 						offset += sz;
 						bsz += sz;
 					}
@@ -964,7 +976,7 @@ int Connector::connectToPort(char* ip, int port)
 					int bsz = 0;
 					int bTO;
 					while ((sz = recvWT(sock, tBuff, 16, gTimeOut, &bTO)) > 0) {
-						memcpy(buffer.data() + offset, tBuff, sz);
+                                                memcpy(const_cast<char*>(buffer.data()) + offset, tBuff, sz);
 						offset += sz;
 						bsz += sz;
 					}

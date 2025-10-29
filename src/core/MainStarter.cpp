@@ -1358,7 +1358,7 @@ void MainStarter::startIPScan(){
 											   if (gAdaptiveScan) {
 												   AdaptiveScanner::updateThreadCount();
 											   }
-											   Sleep(500);
+											   Sleep(10);
 										   }
 										   if (!globalScanFlag) goto haters_gonna_hate_IPM;
 										   
@@ -1379,7 +1379,7 @@ void MainStarter::startIPScan(){
 									   if (gAdaptiveScan) {
 										   AdaptiveScanner::updateThreadCount();
 									   }
-									   Sleep(500);
+									   Sleep(10);
 								   }
 								   if (!globalScanFlag) goto haters_gonna_hate_IPM;
 
@@ -1404,7 +1404,7 @@ void MainStarter::startIPScan(){
 						   std::random_shuffle(ipVec.begin(), ipVec.end());
 						   while (ipVec.size() != 0) {
 
-						   while (cons >= gThreads && globalScanFlag) Sleep(500);
+						   while (cons >= gThreads && globalScanFlag) Sleep(10);
 						   if (!globalScanFlag) goto haters_gonna_hate_IPM;
 
 						   ++indexIP;
@@ -1720,7 +1720,7 @@ void MainStarter::startImportScan(){
 										   if (gAdaptiveScan) {
 											   AdaptiveScanner::updateThreadCount();
 										   }
-										   Sleep(500);
+										   Sleep(10);
 									   }
 									   if (!globalScanFlag) goto haters_gonna_hate_IM;
 									   
@@ -1789,7 +1789,7 @@ void MainStarter::startImportScan(){
 			struct in_addr tAddr;
 			for (unsigned long i = ip1; i <= ip2; ++i) {
 
-				while (cons >= gThreads && globalScanFlag) Sleep(500);
+				while (cons >= gThreads && globalScanFlag) Sleep(10);
 				if (!globalScanFlag) break;
 
 				++indexIP;

@@ -1,6 +1,6 @@
 #include <Threader.h>
 
-int Threader::gThreadDelay = 10;
+int Threader::gThreadDelay = 1;
 int Threader::threadId = 0;
 std::mutex Threader::m;
 bool Threader::ready = false;
@@ -19,7 +19,28 @@ void Threader::fireThread(std::string ip, void *func(void)) {
 
 	ready = true;
 	cv.notify_one();
-    Sleep(gThreadDelay);
+    // Reduced delay for faster thread creation
+    if (gThreadDelay > 0) {
+        Sleep(gThreadDelay);
+    }
+}
+
+void Threader::fireThreadBatch(const std::vector<std::string>& ips, void *func(void)) {
+    // Add all IPs to queue
+    for (const auto& ip : ips) {
+        ipQueue.push(ip);
+    }
+    
+    // Create threads up to the limit
+    int threadsToCreate = std::min(static_cast<int>(ips.size()), gThreads - threadId);
+    for (int i = 0; i < threadsToCreate; ++i) {
+        ++threadId;
+        std::thread workerThread(func);
+        workerThread.detach();
+    }
+    
+    ready = true;
+    cv.notify_all();
 }
 
 void Threader::cleanUp() {

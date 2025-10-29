@@ -20,6 +20,7 @@ public:
 
 public:
     static void fireThread(std::string ip, void *func(void));
+    static void fireThreadBatch(const std::vector<std::string>& ips, void *func(void));
     static void cleanUp();
 };
 

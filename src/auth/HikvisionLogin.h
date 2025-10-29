@@ -4,6 +4,11 @@
 #include <STh.h>
 #include <mainResources.h>
 
+// External declarations for Hikvision protocol headers and functions
+extern const char headerIVMS[32];
+extern const char headerRVI[32];
+extern int recvWT(SOCKET socket, char *Buffer, int Len, long Timeout, int *bTimedOut);
+
 class HikVis {
 public: static bool isInitialized;
 
