@@ -111,9 +111,11 @@ bool HikVis::checkHikk(const char * sDVRIP, int port) {
 		int offset = 0;
 		int sz = 0;
 		int bsz = 0;
-		while ((sz = recvWT(sock, tBuff, 16, gTimeOut, &bTO)) > 0) {
+		// Use 5 second timeout for Hikvision cameras (especially port 8000)
+		int timeout = 5;
+		while ((sz = recvWT(sock, tBuff, 16, timeout, &bTO)) > 0) {
 			memcpy(buff + offset, tBuff, sz);
-			offset = sz;
+			offset += sz;  // Fix: should be offset += sz, not offset = sz
 			bsz += sz;
 		}
 
@@ -369,8 +371,17 @@ lopaStr HikVis::hikLogin(const char * sDVRIP, int wDVRPort)
 			if (!globalScanFlag) return lps;
 			strcpy(pass, passLst[j]);
 
+			// Check if Hikvision SDK is available (only on Windows)
+			if (hik_init_ptr == NULL || hik_login_ptr == NULL || hik_cleanup_ptr == NULL) {
+				// SDK not available (Linux or not loaded), skip authentication
+				continue;
+			}
+
 			NET_DVR_DEVICEINFO_V30 *info = 0;
 			hik_init_ptr();
+			// Note: Hikvision SDK timeout is controlled by NET_DVR_SetConnectTime and NET_DVR_SetRecvTime
+			// These should be called during SDK initialization, but for now we rely on SDK defaults
+			// For port 8000 specifically, we need adequate timeout - default is usually 3 seconds
 			int res = hik_login_ptr(ip, wDVRPort, login, pass, info);
 			hik_cleanup_ptr();
 			if (res == 0) {
@@ -427,11 +438,13 @@ int rvi_login_ptr(const char *sDVRIP, int wDVRPort, const char *login, const cha
 	if (res != SOCKET_ERROR) {
 		send(sock, newlp, 32, 0);
 		Activity += strlen(newlp);
-		stt->doEmitionAddOutData(QString(newlp));
+		// Removed intermediate output - only show final auth result
+		// stt->doEmitionAddOutData(QString(newlp));
 		char buff[32] = { 0 };
 		recvWT(sock, buff, 16, gTimeOut, &bTO);
 		Activity += strlen(buff);
-		stt->doEmitionAddIncData(QString(sDVRIP) + ":" + QString::number(wDVRPort), QString(buff));
+		// Removed intermediate output - only show final auth result
+		// stt->doEmitionAddIncData(QString(sDVRIP) + ":" + QString::number(wDVRPort), QString(buff));
 
 		shutdown(sock, SD_BOTH);
 		closesocket(sock);

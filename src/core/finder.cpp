@@ -21,6 +21,7 @@
 #include <ServiceVersionDetector.h>
 #include <QTextStream>
 #include <QTextCodec>
+#include <mutex>
 #if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
 #include <QtCore5Compat/QTextCodec>
 #endif
@@ -681,9 +682,10 @@ int __checkFileExistence(int flag)
 	char fileName[64] = {0};
 
 	if (flag == -22)									sprintf(fileName, "./" DIR_NAME "%s_%s/" TYPE5 ".html", Utils::getStartDate().c_str(), Utils::getCurrentTarget().c_str());
-	else if (flag == 0 || flag == 15 || flag == -10)	sprintf(fileName, "./" DIR_NAME "%s_%s/" TYPE1 ".html", Utils::getStartDate().c_str(), Utils::getCurrentTarget().c_str());
+	else if (flag == 0 || flag == 15 || flag == -10 || flag == 4 || flag == 5 || flag == 6 || (flag >= 100 && flag <= 103))	sprintf(fileName, "./" DIR_NAME "%s_%s/" TYPE1 ".html", Utils::getStartDate().c_str(), Utils::getCurrentTarget().c_str());
 	else if (flag == 3)									sprintf(fileName, "./" DIR_NAME "%s_%s/" TYPE2 ".html", Utils::getStartDate().c_str(), Utils::getCurrentTarget().c_str());
 	else if (flag == 16)								sprintf(fileName, "./" DIR_NAME "%s_%s/" TYPE4 ".html", Utils::getStartDate().c_str(), Utils::getCurrentTarget().c_str());
+	else if (flag >= 104 && flag <= 109)				sprintf(fileName, "./" DIR_NAME "%s_%s/" TYPE2 ".html", Utils::getStartDate().c_str(), Utils::getCurrentTarget().c_str());
 	else if(flag >= 17 || flag == 11 || flag == 12 
 		|| flag == 13 || flag == 14 || flag == 1)		sprintf(fileName, "./" DIR_NAME "%s_%s/" TYPE3 ".html", Utils::getStartDate().c_str(), Utils::getCurrentTarget().c_str());
 
@@ -700,41 +702,111 @@ bool ftsOther = true;
 bool ftsSSH = true;
 bool ftsFTP = true;
 bool ftsBA = true;
-std::atomic<bool> fOpened(false);
+std::mutex fileWriteMutex;
 void fputsf(char *text, int flag)
 {
 	char fileName[256] = { 0 };
 
-	if(flag == 0 || flag == 15 || flag == -10) 
+	// Determine file name first (without opening files)
+	if(flag == 0 || flag == 15 || flag == -10 || flag == 4 || flag == 5 || flag == 6) 
 	{
-		if (ftsCameras) ftsCameras		= __checkFileExistence(flag);
 		sprintf(fileName, "./" DIR_NAME "%s_%s/" TYPE1 ".html", Utils::getStartDate().c_str(), Utils::getCurrentTarget().c_str());
 	}
 	else if(flag == 1) 
 	{
-		if(ftsOther) ftsOther			= __checkFileExistence(flag);
 		sprintf(fileName, "./" DIR_NAME "%s_%s/" TYPE2 ".html", Utils::getStartDate().c_str(), Utils::getCurrentTarget().c_str());
 	}
 	else if(flag == -22) 
 	{
-		if(ftsSSH) ftsSSH				= __checkFileExistence(flag);
 		sprintf(fileName, "./" DIR_NAME "%s_%s/" TYPE5 ".html", Utils::getStartDate().c_str(), Utils::getCurrentTarget().c_str());
 	}
-	else if(flag == 3) 
+	else if(flag == 3 || flag == 16) 
 	{
-		if(ftsFTP) ftsFTP				= __checkFileExistence(flag);
 		sprintf(fileName, "./" DIR_NAME "%s_%s/" TYPE4 ".html", Utils::getStartDate().c_str(), Utils::getCurrentTarget().c_str());
 	}
 	else if(flag >= 17 || flag == 11 || flag == 12 
 		|| flag == 13 || flag == 14 || flag == 2
+		|| (flag >= 20 && flag <= 62)  // Camera flags 20-62
 		) 
 	{
-		if(ftsBA) ftsBA					= __checkFileExistence(flag);
 		sprintf(fileName, "./" DIR_NAME "%s_%s/" TYPE3 ".html", Utils::getStartDate().c_str(), Utils::getCurrentTarget().c_str());
 	}
-	else stt->doEmitionRedFoundData("Unknown flag [FLAG: " + QString::number(flag) + "]");
+	// New device types (100-109): ONVIF, RTSP, API cameras, IoT devices, routers
+	else if(flag >= 100 && flag <= 109)
+	{
+		// ONVIF (100), RTSP (101), API cameras (102-103) go to cameras
+		if(flag == 100 || flag == 101 || flag == 102 || flag == 103) {
+			sprintf(fileName, "./" DIR_NAME "%s_%s/" TYPE1 ".html", Utils::getStartDate().c_str(), Utils::getCurrentTarget().c_str());
+		}
+		// Other devices (104-109) go to other
+		else {
+			sprintf(fileName, "./" DIR_NAME "%s_%s/" TYPE2 ".html", Utils::getStartDate().c_str(), Utils::getCurrentTarget().c_str());
+		}
+	}
+	else {
+		stt->doEmitionRedFoundData("Unknown flag [FLAG: " + QString::number(flag) + "]");
+		return;
+	}
 
-	FILE *file = fopen(fileName, "a");
+	// Use mutex to prevent Err:24 (EMFILE) - ensures only one file operation at a time
+	// This includes checking existence, opening, writing, and closing the file
+	std::lock_guard<std::mutex> lock(fileWriteMutex);
+	
+	// Check file existence inside mutex to prevent multiple simultaneous file opens
+	bool needHeader = false;
+	if(flag == 0 || flag == 15 || flag == -10 || flag == 4 || flag == 5 || flag == 6 || (flag >= 100 && flag <= 103)) {
+		if (ftsCameras) {
+			needHeader = __checkFileExistence(flag);
+			if (needHeader) ftsCameras = false;
+		}
+	}
+	else if(flag == 1 || (flag >= 104 && flag <= 109)) {
+		if (ftsOther) {
+			needHeader = __checkFileExistence(flag);
+			if (needHeader) ftsOther = false;
+		}
+	}
+	else if(flag == -22) {
+		if (ftsSSH) {
+			needHeader = __checkFileExistence(flag);
+			if (needHeader) ftsSSH = false;
+		}
+	}
+	else if(flag == 3 || flag == 16) {
+		if (ftsFTP) {
+			needHeader = __checkFileExistence(flag);
+			if (needHeader) ftsFTP = false;
+		}
+	}
+	else if(flag >= 17 || flag == 11 || flag == 12 || flag == 13 || flag == 14 || flag == 2 || (flag >= 20 && flag <= 62)) {
+		if (ftsBA) {
+			needHeader = __checkFileExistence(flag);
+			if (needHeader) ftsBA = false;
+		}
+	}
+	
+	// Try to open file with retry on Err:24 (EMFILE - too many open files)
+	FILE *file = NULL;
+	int retryCount = 0;
+	const int maxRetries = 5;
+	
+	while (file == NULL && retryCount < maxRetries) {
+		file = fopen(fileName, "a");
+		if (file == NULL) {
+			int err = GetLastError();
+			if (err == 24) {  // EMFILE - too many open files
+				// Wait a bit and retry
+				Sleep(50);
+				retryCount++;
+				if (retryCount >= maxRetries) {
+					stt->doEmitionYellowFoundData("Warning: Cannot open file after " + QString::number(maxRetries) + " retries [Flag: " + QString::number(flag) + "]");
+				}
+			} else {
+				// Other error, don't retry
+				break;
+			}
+		}
+	}
 
 	if(file != NULL)
 	{
@@ -785,71 +857,61 @@ void fputsf(char *text, int flag)
 			strcat (string, "</div>");
 		};
 
-		if (flag == 0 && ftsCameras)
+		if (needHeader)
 		{
 			char tmsg[1024] = {0};
-			ftsCameras = false;
-			strcpy(tmsg, "<meta http-equiv=\"Content-Type\" content=\"text/html; charset=UTF-8\" /><title>" TYPE1 "</title>");
-			//strcat(tmsg, msg);
-			strcat(tmsg, HTTP_FILE_STYLE);
-			fputs (tmsg, file);
-			fputs(HTTP_FILE_HEADER, file);
-		};
-		if(flag == 1 && ftsOther)	
-		{
-			char tmsg[1024] = {0};
-			ftsOther = false;
-			strcpy(tmsg, "<meta http-equiv=\"Content-Type\" content=\"text/html; charset=UTF-8\" /><title>" TYPE2 "</title>");
-			//strcat(tmsg, msg);
-			strcat(tmsg, HTTP_FILE_STYLE);
-			fputs (tmsg, file);
-			fputs(HTTP_FILE_HEADER, file);
-		};
-		if(flag == -22 && ftsSSH)	
-		{
-			char tmsg[1024] = {0};
-			ftsOther = false;
-			strcpy(tmsg, "<meta http-equiv=\"Content-Type\" content=\"text/html; charset=UTF-8\" /><title>" TYPE5 "</title>");
-			//strcat(tmsg, msg);
-			strcat(tmsg, HTTP_FILE_STYLE);
-			fputs (tmsg, file);
-			fputs(HTTP_FILE_HEADER, file);
-		};
-		if(flag == 3 && ftsFTP)
-		{
-			char tmsg[1024] = {0};
-			ftsFTP = false;
-			strcpy(tmsg, "<meta http-equiv=\"Content-Type\" content=\"text/html; charset=UTF-8\" /><title>" TYPE4 "</title>");
-			//strcat(tmsg, msg);
-			strcat(tmsg, HTTP_FILE_STYLE);
-			fputs (tmsg, file);
-			fputs(HTTP_FILE_HEADER, file);
-		};
-		if((flag >= 17 || flag == 11 || flag == 12 || flag == 13 || flag == 14 || flag == 2) && ftsBA) 
-		{
-			char tmsg[1024] = {0};
-			ftsBA = false;
-			strcpy(tmsg, "<meta http-equiv=\"Content-Type\" content=\"text/html; charset=UTF-8\" /><title>" TYPE3 "</title>");
-			//strcat(tmsg, msg);
+			if(flag == 0 || flag == 4 || flag == 5 || flag == 6 || flag == 15 || flag == -10 || flag == 100 || flag == 101 || flag == 102 || flag == 103) {
+				strcpy(tmsg, "<meta http-equiv=\"Content-Type\" content=\"text/html; charset=UTF-8\" /><title>" TYPE1 "</title>");
+			}
+			else if(flag == 1 || (flag >= 104 && flag <= 109)) {
+				strcpy(tmsg, "<meta http-equiv=\"Content-Type\" content=\"text/html; charset=UTF-8\" /><title>" TYPE2 "</title>");
+			}
+			else if(flag == -22) {
+				strcpy(tmsg, "<meta http-equiv=\"Content-Type\" content=\"text/html; charset=UTF-8\" /><title>" TYPE5 "</title>");
+			}
+			else if(flag == 3 || flag == 16) {
+				strcpy(tmsg, "<meta http-equiv=\"Content-Type\" content=\"text/html; charset=UTF-8\" /><title>" TYPE4 "</title>");
+			}
+			else if(flag >= 17 || flag == 11 || flag == 12 || flag == 13 || flag == 14 || flag == 2 || (flag >= 20 && flag <= 62)) {
+				strcpy(tmsg, "<meta http-equiv=\"Content-Type\" content=\"text/html; charset=UTF-8\" /><title>" TYPE3 "</title>");
+			}
 			strcat(tmsg, HTTP_FILE_STYLE);
 			fputs (tmsg, file);
 			fputs(HTTP_FILE_HEADER, file);
 		};
  
-		while(fOpened) {
-			Sleep((rand() % 10 + 60));
-		};
-		fOpened = true;
-		fputs (string, file);
-		fclose (file);
-		fOpened = false;
+		int writeResult = fputs (string, file);
+		if (writeResult < 0) {
+			stt->doEmitionRedFoundData("Failed to write to file [Flag: " + QString::number(flag) + "]");
+		}
+		if (fclose (file) != 0) {
+			stt->doEmitionRedFoundData("Failed to close file [Flag: " + QString::number(flag) + "]");
+		}
 
 		delete []string;
+		// Mutex automatically released when lock goes out of scope
 	}
 	else
 	{
-		stt->doEmitionRedFoundData("Cannot open file [Flag: " + QString::number(flag) + " Err:" + QString::number(GetLastError()) + "]");
-		MainStarter::createResultFiles();
+		int err = GetLastError();
+		if (err == 24) {  // EMFILE
+			// Try to create directory and retry once
+			MainStarter::createResultFiles();
+			Sleep(100);
+			file = fopen(fileName, "a");
+			if (file != NULL) {
+				// Success on retry - continue normally
+				// Put the logic inside if(file != NULL) block above
+				// For now just close and report error to avoid code duplication
+				fclose(file);
+				stt->doEmitionYellowFoundData("File opened on retry [Flag: " + QString::number(flag) + "] - result may be lost");
+			} else {
+				stt->doEmitionRedFoundData("Cannot open file after retry [Flag: " + QString::number(flag) + " Err:" + QString::number(GetLastError()) + "]");
+			}
+		} else {
+			stt->doEmitionRedFoundData("Cannot open file [Flag: " + QString::number(flag) + " Err:" + QString::number(GetLastError()) + "]");
+			MainStarter::createResultFiles();
+		}
 	};
 }
 
@@ -897,14 +959,38 @@ void putInFile(int flag, const char *ip, int port, int size, const char *finalst
 		resMes += " <font color=\"#0084ff\">: </font><font color=\"#ff9600\">" + strf.toHtmlEscaped() + "</font>";
 	};
 
-	resMes.replace("[PK]", PEKO_PIC);
-	stt->doEmitionFoundData(resMes.replace("[R]", REDIRECT_PIC));
+	// Don't output to console for flags 4, 5, 6 (Hikvision/RVI/Safari) 
+	// as they are already output via _specFillerCustom
+	if (flag != 4 && flag != 5 && flag != 6) {
+		resMes.replace("[PK]", PEKO_PIC);
+		stt->doEmitionFoundData(resMes.replace("[R]", REDIRECT_PIC));
+	}
+
+	// Format IP with port for log entry
+	char ipWithPort[256] = {0};
+	char displayIP[256] = {0};
+	// Check if ip already contains port (http://, https://, or :port)
+	if (strstr(ip, "://") != NULL || strstr(ip, ":") != NULL) {
+		// IP already contains protocol or port
+		snprintf(ipWithPort, sizeof(ipWithPort), "%s", ip);
+		snprintf(displayIP, sizeof(displayIP), "%s", ip);
+	} else {
+		// Need to add port - determine protocol based on port
+		if (port == 443 || port == 8443) {
+			snprintf(ipWithPort, sizeof(ipWithPort), "https://%s:%d", ip, port);
+		} else if (port == 21) {
+			snprintf(ipWithPort, sizeof(ipWithPort), "ftp://%s:%d", ip, port);
+		} else {
+			snprintf(ipWithPort, sizeof(ipWithPort), "http://%s:%d", ip, port);
+		}
+		snprintf(displayIP, sizeof(displayIP), "%s:%d", ip, port);
+	}
 
 	sprintf(log, "<span id=\"hostSpan\"><a href=\"%s\"/><font color=MediumSeaGreen>%s</font></a>;</span> <span id=\"recvSpan\">Received: <font color=SteelBlue>%d</font>",
-        ip, ip, size);
+        ipWithPort, displayIP, size);
 	
 	//Generic camera
-	if(flag == 0 || flag == 15 || flag == -10)
+	if(flag == 0 || flag == 15 || flag == -10 || flag == 4 || flag == 5 || flag == 6 || (flag >= 100 && flag <= 103))
 	{
 		fillGlobalLogData(ip, port, std::to_string(size).c_str(), finalstr, "", "", "", cp,  TYPE1 );
 	}
@@ -950,14 +1036,31 @@ void _specFillerCustom(const char *ip, int port, const char *finalstr, const cha
 
 	++PieBA;
 
+	// Always save result, even if login/password not found
+	char consoleLog[512] = { 0 };
 	if (strlen(login) > 0 || strlen(pass) > 0)
 	{
 		sprintf(log, "<font color=orangered>%s</font>: <span id=\"hostSpan\"><a href=\"%s\"><font color=darkcyan>%s (%s:%s)</font></a></span> T: <font color=GoldenRod>%s</font>\n",
 			classString, ip, ip, login, pass, finalstr);
+		// Simplified console output: only show success with credentials
+		sprintf(consoleLog, "[%s] %s:%d ✓ Auth OK | Login: %s Password: %s", 
+			classString, ip, port, login, pass);
+	}
+	else
+	{
+		// Save device info even if credentials not found
+		sprintf(log, "<font color=orangered>%s</font>: <span id=\"hostSpan\"><a href=\"http://%s:%d\"><font color=darkcyan>%s:%d</font></a></span> T: <font color=GoldenRod>%s (No auth found)</font>\n",
+			classString, ip, port, ip, port, finalstr);
+		// Simplified console output: only show failure (no auth found)
+		// Don't output for devices requiring auth if no credentials found - too much spam
+		// sprintf(consoleLog, "[%s] %s:%d ✗ Auth failed | Type: %s", 
+		//	classString, ip, port, finalstr);
+		consoleLog[0] = '\0'; // Empty - no output for failed auth
 	}
 
-	stt->doEmitionFoundData(QString::fromLocal8Bit(log));
-
+	if (strlen(consoleLog) > 0) {
+		stt->doEmitionFoundData(QString::fromLocal8Bit(consoleLog));
+	}
 	fputsf(log, flag);
 }
 void _specFillerBA(const char *ip, int port, const char *finalstr, const char *login, const char *pass, int flag)
@@ -986,28 +1089,37 @@ void _specFillerBA(const char *ip, int port, const char *finalstr, const char *l
 		offset = 7;
 	}
 
+	char consoleLog[512] = { 0 };
+	const char* cleanIP = ip + offset;
+	
 	if (strlen(login) > 0 || strlen(pass) > 0)
     {
 		if (8 == offset) {
 			sprintf(log, "[BA]: <span id=\"hostSpan\"><a href=\"https://%s:%s@%s\"><font color=floralwhite>%s:%s@%s</font></a></span> T: <font color=GoldenRod>%s</font>\n",
-				login, pass, ip + offset, login, pass, ip + offset, finalstr);
+				login, pass, cleanIP, login, pass, cleanIP, finalstr);
 		}
 		else {
 			sprintf(log, "[BA]: <span id=\"hostSpan\"><a href=\"http://%s:%s@%s\"><font color=floralwhite>%s:%s@%s</font></a></span> T: <font color=GoldenRod>%s</font>\n",
-				login, pass, ip + offset, login, pass, ip + offset, finalstr);
+				login, pass, cleanIP, login, pass, cleanIP, finalstr);
 		}
+		// Enhanced console output with login/password
+		sprintf(consoleLog, "[BA] %s:%d Login: %s Password: %s | Type: %s", 
+			cleanIP, port, login, pass, finalstr);
     } else {
 		if (8 == offset) {
 			sprintf(log, "[BA]: <span id=\"hostSpan\"><a href=\"https://%s\"><font color=floralwhite>%s</font></a></span> T: <font color=GoldenRod>%s</font>\n",
-				ip + offset, ip + offset, finalstr);
+				cleanIP, cleanIP, finalstr);
 		}
 		else {
 			sprintf(log, "[BA]: <span id=\"hostSpan\"><a href=\"http://%s\"><font color=floralwhite>%s</font></a></span> T: <font color=GoldenRod>%s</font>\n",
-				ip + offset, ip + offset, finalstr);
+				cleanIP, cleanIP, finalstr);
 		}
+		// Enhanced console output without credentials
+		sprintf(consoleLog, "[BA] %s:%d | Type: %s (No auth found)", 
+			cleanIP, port, finalstr);
     }
 
-	stt->doEmitionFoundData(QString::fromLocal8Bit(log));
+	stt->doEmitionFoundData(QString::fromLocal8Bit(consoleLog));
 
 	fputsf(log, flag);
 }
@@ -1015,6 +1127,7 @@ void _specFillerBA(const char *ip, int port, const char *finalstr, const char *l
 void _specFillerRSTP(const char *ip, int port, const char *finalstr, const char *login, const char *pass, int flag)
 {
 	char log[512] = { 0 };
+	char consoleLog[512] = { 0 };
 
 	++PieBA;
 
@@ -1022,13 +1135,19 @@ void _specFillerRSTP(const char *ip, int port, const char *finalstr, const char 
 	{
 			sprintf(log, "[RSTP]: <span id=\"hostSpan\"><a href=\"%s11\"><font color=\"#736AFF\">%s11 (%s:%s)</font></a></span> T: <font color=#F0E68C>%s</font>\n",
 				ip, ip, login, pass, finalstr);
+			// Enhanced console output with login/password
+			sprintf(consoleLog, "[RTSP] %s:%d Login: %s Password: %s | Type: %s", 
+				ip, port, login, pass, finalstr);
 	}
 	else {
 			sprintf(log, "[RSTP]: <span id=\"hostSpan\"><a href=\"%s11\"><font color=\"#736AFF\">%s11</font></a></span> T: <font color=#F0E68C>%s</font>\n",
 				ip, ip, finalstr);
+			// Enhanced console output without credentials
+			sprintf(consoleLog, "[RTSP] %s:%d | Type: %s (No auth found)", 
+				ip, port, finalstr);
 	}
 
-	stt->doEmitionFoundDataCustom(QString::fromLocal8Bit(log), "3090C7");
+	stt->doEmitionFoundDataCustom(QString::fromLocal8Bit(consoleLog), "3090C7");
 
 	fputsf(log, flag);
 }
@@ -1602,20 +1721,40 @@ void _saveSSH(const char *ip, int port, int size, const char *buffcpy)
 			int gsz = ptr1 - buffcpy;
 			strncpy(goodStr, buffcpy, gsz);
 			if(strlen(ptr1 + 3) > 0) strcpy(banner, ptr1 + 3);
-            sprintf(log, "[SSH] <font color=\"#00a8ff\"> %s:%d </font><font color=\"#323232\">; Banner:</font> <font color=\"#9cff00\"> %s </font>", goodStr, port, banner);
-            sprintf(logEmit, "[SSH] <span style=\"color: #00a8ff;\"> %s:%d </span>", goodStr, port);
-
-			++PieSSH;
-
-            fputsf (log, -22);
+            
 			char loginSSH[128] = {0};
 			char passSSH[128] = {0};
 			const char *ptrl1 = strstr(buffcpy, ":");
 			int lpsz = ptrl1 - buffcpy;
-			strncpy(loginSSH, buffcpy, lpsz);
+			if (ptrl1 != NULL && lpsz > 0 && lpsz < 128) {
+				strncpy(loginSSH, buffcpy, lpsz);
+				loginSSH[lpsz] = '\0';
+			}
 			const char *ptrl2 = strstr(buffcpy, "@");
-			lpsz = ptrl2 - ptrl1;
-			strncpy(passSSH, ptrl1 + 1, lpsz);
+			if (ptrl1 != NULL && ptrl2 != NULL) {
+				lpsz = ptrl2 - ptrl1 - 1;
+				if (lpsz > 0 && lpsz < 128) {
+					strncpy(passSSH, ptrl1 + 1, lpsz);
+					passSSH[lpsz] = '\0';
+				}
+			}
+			
+			// Format log with login/password if found
+			if (strlen(loginSSH) > 0 || strlen(passSSH) > 0) {
+				sprintf(log, "[SSH] <font color=\"#00a8ff\"> %s:%d (%s:%s) </font><font color=\"#323232\">; Banner:</font> <font color=\"#9cff00\"> %s </font>", 
+					goodStr, port, loginSSH, passSSH, banner);
+				sprintf(logEmit, "[SSH] <span style=\"color: #00a8ff;\"> %s:%d (%s:%s) </span> Banner: %s", 
+					goodStr, port, loginSSH, passSSH, banner);
+			} else {
+				sprintf(log, "[SSH] <font color=\"#00a8ff\"> %s:%d </font><font color=\"#323232\">; Banner:</font> <font color=\"#9cff00\"> %s </font>", 
+					goodStr, port, banner);
+				sprintf(logEmit, "[SSH] <span style=\"color: #00a8ff;\"> %s:%d </span> Banner: %s", 
+					goodStr, port, banner);
+			}
+
+			++PieSSH;
+
+            fputsf (log, -22);
 			fillGlobalLogData(ip, port, std::to_string(size).c_str(), "[SSH service]", loginSSH, passSSH, "NULL", "UTF-8", "SSH");
 			stt->doEmitionFoundData(QString::fromLocal8Bit(logEmit));
 		}
@@ -3018,10 +3157,16 @@ void parseFlag(int flag, char* ip, char *ipRaw, int port, std::string *buff, con
 	}
 
 	//Generic camera
-	if (flag == 0) {
+	if (flag == 0 || flag == 15 || flag == -10 || (flag >= 100 && flag <= 103)) {
 		++PieCamerasC1;
 		++camerasC1;
-		putInFile(flag, ip, port, size, header.c_str(), cp);
+		const char* cameraType = "";
+		if (flag == 100) cameraType = "[ONVIF Device]";
+		else if (flag == 101) cameraType = "[RTSP Stream]";
+		else if (flag == 102) cameraType = "[Dahua API Camera]";
+		else if (flag == 103) cameraType = "[Generic API Camera]";
+		else cameraType = header.c_str();
+		putInFile(flag, ip, port, size, cameraType, cp);
 		
 		// Deep scan if enabled
 		if (gDeepScan) {
@@ -3120,10 +3265,17 @@ void parseFlag(int flag, char* ip, char *ipRaw, int port, std::string *buff, con
 		}
 	}
 	//Other
-	else if (flag == 1) {
+	else if (flag == 1 || (flag >= 104 && flag <= 109)) {
 		++PieOther;
 		++other;
-		putInFile(flag, ip, port, size, header.c_str(), cp);
+		const char* deviceType = header.c_str();
+		if (flag == 104) deviceType = "[SNMP Device]";
+		else if (flag == 105) deviceType = "[MikroTik Router]";
+		else if (flag == 106) deviceType = "[Ubiquiti Equipment]";
+		else if (flag == 107) deviceType = "[TP-Link IoT]";
+		else if (flag == 108) deviceType = "[TP-Link Router]";
+		else if (flag == 109) deviceType = "[IoT Device]";
+		putInFile(flag, ip, port, size, deviceType, cp);
 	}
 	//Auth
 	else if (flag == 2) {
@@ -3185,11 +3337,19 @@ void parseFlag(int flag, char* ip, char *ipRaw, int port, std::string *buff, con
 
 	if (flag == 4 && HikVis::isInitialized)
 	{
+		++PieCamerasC1;
+		++camerasC1;
 		HikVis hv;
+		
+		// Check if bruteforce is enabled
+		if (gMaxBrutingThreads <= 0) {
+			stt->doEmitionYellowFoundData("[Hikvision] Bruteforce disabled (gMaxBrutingThreads = 0)");
+		}
+		
 		lopaStr lps = hv.HVLobby(ip, port);
 		if (strstr(lps.login, "UNKNOWN") == NULL && strlen(lps.other) == 0)
 		{
-			_specFillerCustom(ip, port, "[Hikvision IVMS]", lps.login, lps.pass, 0, "[SVC]");
+			_specFillerCustom(ip, port, "[Hikvision IVMS]", lps.login, lps.pass, flag, "[SVC]");
 			//fillGlobalLogData(ip, port, std::to_string(size).c_str(), "[Hikvision IVMS] ()",
 			//	lps.login, lps.pass, "[Hikvision IVMS]", "UTF-8", "Basic Authorization");
 
@@ -3214,16 +3374,37 @@ void parseFlag(int flag, char* ip, char *ipRaw, int port, std::string *buff, con
 			else stt->doEmitionRedFoundData("Cannot open csv - \"" + QString(fileName));
 			HikVis::hikCounter++;
 			hikkaStop = false;
-		};
+		}
+		else
+		{
+			// Save basic info even if auth not found - use _specFillerCustom for consistent format
+			_specFillerCustom(ip, port, "[Hikvision IVMS]", "", "", flag, "[SVC]");
+		}
+		return;
+	}
+	else if (flag == 4)
+	{
+		// Save basic info if HikVis SDK not initialized - use _specFillerCustom for consistent format
+		++PieCamerasC1;
+		++camerasC1;
+		_specFillerCustom(ip, port, "[Hikvision IVMS]", "", "", flag, "[SVC]");
 		return;
 	}
 	else if (flag == 5)
 	{
+		++PieCamerasC1;
+		++camerasC1;
 		HikVis hv;
+		
+		// Check if bruteforce is enabled
+		if (gMaxBrutingThreads <= 0) {
+			stt->doEmitionYellowFoundData("[RVI] Bruteforce disabled (gMaxBrutingThreads = 0)");
+		}
+		
 		lopaStr lps = hv.RVILobby(ip, port);
 		if (strstr(lps.login, "UNKNOWN") == NULL && strlen(lps.other) == 0)
 		{
-			_specFillerCustom(ip, port, "[RVI]", lps.login, lps.pass, 0, "[SVC]");
+			_specFillerCustom(ip, port, "[RVI]", lps.login, lps.pass, flag, "[SVC]");
 			/*fillGlobalLogData(ip, port, std::to_string(size).c_str(), "[RVI] ()",
 				lps.login, lps.pass, "[RVI]", "UTF-8", "Basic Authorization");*/
 
@@ -3264,7 +3445,21 @@ void parseFlag(int flag, char* ip, char *ipRaw, int port, std::string *buff, con
 			}
 			HikVis::rviCounter++;
 			rviStop = false;
-		};
+		}
+		else
+		{
+			// Save basic info even if auth not found - use _specFillerCustom for consistent format
+			_specFillerCustom(ip, port, "[RVI]", "", "", flag, "[SVC]");
+		}
+		return;
+	}
+	else if (flag == 6)
+	{
+		// Safari CCTV - always try to get login/pass, but save even if not found
+		++PieCamerasC1;
+		++camerasC1;
+		// Note: Safari CCTV detection doesn't have auth lookup, so save basic info
+		_specFillerCustom(ip, port, "[Safari CCTV]", "", "", flag, "[SVC]");
 		return;
 	}
 	else if (flag == 21) //Eyeon

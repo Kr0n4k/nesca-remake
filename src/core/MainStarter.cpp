@@ -7,6 +7,15 @@
 #include <QTextStream>
 #include <QString>
 #include <chrono>
+#include <mutex>
+#include <cstring>
+#ifndef WIN32
+#include <errno.h>
+// Wrapper for GetLastError() on non-Windows platforms
+static int GetLastError() {
+	return errno;
+}
+#endif
 
 int gTimeOut = 3;
 int gPingTimeout = 1;
@@ -178,12 +187,7 @@ int MainStarter::fileLoader(const char *fileName) {
 		return -1;
 	}
 
-	// Limit the number of ranges to prevent memory issues
-	if (shuffleArray.size() > 10000) {
-		safeSttCall([&]() { stt->doEmitionRedFoundData("[IP Loader] Too many IP ranges in file. Maximum 10000 allowed."); });
-		return -1;
-	}
-
+	// No limit on number of ranges - removed 10000 limit restriction
 	ipsstartfl = new unsigned int*[shuffleArray.size() + 1];
 	ipsendfl = new unsigned int*[shuffleArray.size() + 1];
 
@@ -251,9 +255,11 @@ int MainStarter::fileLoader(const char *fileName) {
 			}
 
 			// Limit the size of IP range to prevent memory issues
+			// Increased limit to 16 million IPs (class A network) to allow large ranges
 			unsigned long rangeSize = ip2 - ip1 + 1;
-			if (rangeSize > 65536) { // Maximum 65536 IPs per range
-				safeSttCall([&]() { stt->doEmitionYellowFoundData("Range too large, skipping: " + QString(curIPStr.c_str())); });
+			const unsigned long MAX_RANGE_SIZE = 16777216; // 256^3 = class A network
+			if (rangeSize > MAX_RANGE_SIZE) {
+				safeSttCall([&]() { stt->doEmitionYellowFoundData("Range too large (>" + QString::number(MAX_RANGE_SIZE) + "), skipping: " + QString(curIPStr.c_str())); });
 				continue;
 			}
 
@@ -549,7 +555,33 @@ void MainStarter::saveBackupToFile()
 				// Reset to 0 if invalid
 				gflIndex = 0;
 			}
-			FILE *savingFile = fopen("tempIPLst.bk", "w");
+			// Protect file operations with mutex to prevent Err:24 (EMFILE)
+			// Use the same mutex as fputsf to ensure no concurrent file operations
+			extern std::mutex fileWriteMutex;
+			std::lock_guard<std::mutex> lock(fileWriteMutex);
+			
+			// Try to open file with retry on Err:24 (EMFILE)
+			FILE *savingFile = NULL;
+			int retryCount = 0;
+			const int maxRetries = 5;
+			while (savingFile == NULL && retryCount < maxRetries) {
+				savingFile = fopen("tempIPLst.bk", "w");
+				if (savingFile == NULL) {
+					int err = GetLastError();
+					if (err == 24) {  // EMFILE - too many open files
+						Sleep(50);
+						retryCount++;
+						if (retryCount >= maxRetries) {
+							stt->doEmitionYellowFoundData("[_saver] Cannot open file after " + QString::number(maxRetries) + " retries (Err:24)");
+						}
+					} else {
+						// Other error, don't retry
+						stt->doEmitionRedFoundData("[_saver] Cannot open file. Err:" + QString::number(err));
+						break;
+					}
+				}
+			}
+			
 			if (NULL != savingFile)
 			{
 				if (gflIndex < MainStarter::flCounter) {
@@ -585,7 +617,6 @@ void MainStarter::saveBackupToFile()
 				};
 				fclose(savingFile);
 			}
-			else stt->doEmitionRedFoundData("[_saver] Cannot open file.");
 		};
 
 		// Limit gPorts to prevent buffer overflow (saveStr is 512 bytes)
@@ -773,10 +804,14 @@ void _tracker() {
 
 #if defined(WIN32) || defined(_WIN32) || defined(__WIN32) && !defined(__CYGWIN__)
 		if (inet_addr(trcSrv) != INADDR_NONE) sockAddr.sin_addr.S_un.S_addr = inet_addr(trcSrv);
-		else if (host = gethostbyname(trcSrv)) ((unsigned long*)&sockAddr.sin_addr)[0] = ((unsigned long**)host->h_addr_list)[0][0];
+		else if ((host = gethostbyname(trcSrv)) != NULL) {
+			memcpy(&sockAddr.sin_addr, host->h_addr_list[0], host->h_length);
+		}
 #else
 		if (inet_addr(trcSrv) != INADDR_NONE) sockAddr.sin_addr.s_addr = inet_addr(trcSrv);
-		else if (host = gethostbyname(trcSrv)) ((unsigned long*)&sockAddr.sin_addr)[0] = ((unsigned long**)host->h_addr_list)[0][0];
+		else if ((host = gethostbyname(trcSrv)) != NULL) {
+			memcpy(&sockAddr.sin_addr, host->h_addr_list[0], host->h_length);
+		}
 #endif
 		SOCKET sock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
 
@@ -974,10 +1009,14 @@ void _tracker() {
 
 #if defined(WIN32) || defined(_WIN32) || defined(__WIN32) && !defined(__CYGWIN__)
 					if (inet_addr(ndbServer) != INADDR_NONE) sockAddr.sin_addr.S_un.S_addr = inet_addr(ndbServer);
-					else if (host = gethostbyname(ndbServer)) ((unsigned long*)&sockAddr.sin_addr)[0] = ((unsigned long**)host->h_addr_list)[0][0];
+					else if ((host = gethostbyname(ndbServer)) != NULL) {
+						memcpy(&sockAddr.sin_addr, host->h_addr_list[0], host->h_length);
+					}
 #else
 					if (inet_addr(ndbServer) != INADDR_NONE) sockAddr.sin_addr.s_addr = inet_addr(ndbServer);
-					else if (host = gethostbyname(ndbServer)) ((unsigned long*)&sockAddr.sin_addr)[0] = ((unsigned long**)host->h_addr_list)[0][0];
+					else if ((host = gethostbyname(ndbServer)) != NULL) {
+						memcpy(&sockAddr.sin_addr, host->h_addr_list[0], host->h_length);
+					}
 #endif
 					sock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
 
@@ -1189,7 +1228,7 @@ void _connect() {
 				}
 				
 				// Then scan remaining ports
-				for (int i = 0; i < MainStarter::portVector.size(); ++i) {
+				for (size_t i = 0; i < MainStarter::portVector.size(); ++i) {
 					int port = MainStarter::portVector[i];
 					if (prioritizedPorts.contains(port)) continue;  // Already scanned
 					
@@ -1212,7 +1251,7 @@ void _connect() {
 				}
 			} else {
 				// Standard scan without prioritization
-				for (int i = 0; i < MainStarter::portVector.size(); ++i)
+				for (size_t i = 0; i < MainStarter::portVector.size(); ++i)
 				{
 					if (!globalScanFlag) break;
 					auto startTime = std::chrono::steady_clock::now();
@@ -1476,6 +1515,7 @@ int _GetDNSFromMask(char *mask, char *saveMask, char *saveMaskEnder) {
 				ZeroMemory(maskRes, sizeof(maskRes));*/
 			};
 		};
+		return 0;  // Return success after processing recursive calls
 	}
 	else
 	{
@@ -1488,6 +1528,7 @@ int _GetDNSFromMask(char *mask, char *saveMask, char *saveMaskEnder) {
 		verboseProgress(gTargets);
 
 		Threader::fireThread(currentIP, (void*(*)(void))_connect);
+		return 0;  // Return success after firing thread
 	};
 }
 int _getChunkCount(char *data) {
@@ -1804,7 +1845,7 @@ void MainStarter::createResultFiles() {
 		stt->doEmitionGreenFoundData("Result directory \"" + QString::fromLocal8Bit(fileName) + "\" successfully created.");
 	}
 #else
-	struct stat str = { 0 };
+	struct stat str;
 	if (stat(fileName, &str) == -1) {
 		mkdir(fileName, 0700);
 	}
@@ -1814,14 +1855,26 @@ void MainStarter::createResultFiles() {
 /* This array will store all of the mutexes available to OpenSSL. */
 static MUTEX_TYPE *mutex_buf = NULL;
 
+// Function is used via function pointer in CRYPTO_set_locking_callback
+// Suppress unused warning - compiler can't see the indirect usage
+#ifdef __GNUC__
+__attribute__((used))
+#endif
 static void locking_function(int mode, int n, const char * file, int line)
 {
+	(void)file;  // Suppress unused parameter warning
+	(void)line;  // Suppress unused parameter warning
 	if (mode & CRYPTO_LOCK)
 		MUTEX_LOCK(mutex_buf[n]);
 	else
 		MUTEX_UNLOCK(mutex_buf[n]);
 }
 
+// Function is used via function pointer in CRYPTO_set_id_callback
+// Suppress unused warning - compiler can't see the indirect usage
+#ifdef __GNUC__
+__attribute__((used))
+#endif
 static unsigned long id_function(void)
 {
 	return ((unsigned long)THREAD_ID);
@@ -1892,6 +1945,7 @@ void MainStarter::start(const char* targets, const char* ports) {
 	QTextStream configOut(stdout);
 	const char* ANSI_CYAN = "\033[36m";
 	const char* ANSI_GREEN = "\033[32m";
+	const char* ANSI_YELLOW = "\033[33m";
 	const char* ANSI_RESET = "\033[0m";
 	
 	configOut << ANSI_CYAN << "[INFO]" << ANSI_RESET << " Scan configuration:" << Qt::endl;
@@ -1914,7 +1968,31 @@ void MainStarter::start(const char* targets, const char* ports) {
 		configOut << ANSI_CYAN << "[INFO]" << ANSI_RESET << " Adaptive scanning initialized" << Qt::endl;
 	}
 	
+	// Load login/password lists before starting scan
 	runAuxiliaryThreads();
+	
+	// Wait a bit for lists to load, then display bruteforce status
+	Sleep(1000); // Give FileUpdater time to load lists
+	
+	// Display bruteforce configuration after lists are loaded
+	extern int MaxLogin, MaxPass, MaxFTPLogin, MaxFTPPass, MaxSSHPass, gMaxBrutingThreads;
+	if (gMaxBrutingThreads > 0) {
+		configOut << "  Bruteforce: " << ANSI_GREEN << "Enabled" << ANSI_RESET << " (Max threads: " << gMaxBrutingThreads << ")" << Qt::endl;
+		if (MaxLogin > 0 && MaxPass > 0) {
+			configOut << "    Login list: " << MaxLogin << " entries, Password list: " << MaxPass << " entries" << Qt::endl;
+		} else {
+			configOut << "    " << ANSI_YELLOW << "Warning: Login/Password lists not loaded!" << ANSI_RESET << Qt::endl;
+		}
+		if (MaxFTPLogin > 0 && MaxFTPPass > 0) {
+			configOut << "    FTP: " << MaxFTPLogin << " logins, " << MaxFTPPass << " passwords" << Qt::endl;
+		}
+		if (MaxSSHPass > 0) {
+			configOut << "    SSH: " << MaxSSHPass << " login:password pairs" << Qt::endl;
+		}
+	} else {
+		configOut << "  Bruteforce: " << ANSI_YELLOW << "Disabled" << ANSI_RESET << " (gMaxBrutingThreads = 0)" << Qt::endl;
+	}
+	configOut << Qt::endl;
 	
 	// Display scan start message and start appropriate scan mode
 	if (gMode == 0) {

@@ -85,8 +85,8 @@ void updateLogin() {
     }
     else
     {
-        stt->doEmitionRedFoundData("No login list found");
-        stt->doEmitionKillSttThread();
+        // Don't kill thread if file doesn't exist - maybe it will be created later
+        stt->doEmitionYellowFoundData("Warning: Login list file not found: " + QString(LOGIN_FN));
     };
 }
 void updatePass() {
@@ -138,8 +138,8 @@ void updatePass() {
     }
     else
     {
-        stt->doEmitionRedFoundData("No password list found");
-        stt->doEmitionKillSttThread();
+        // Don't kill thread if file doesn't exist - maybe it will be created later
+        stt->doEmitionYellowFoundData("Warning: Password list file not found: " + QString(PASS_FN));
     };
 }
 void updateSSH() {
@@ -192,8 +192,8 @@ void updateSSH() {
     }
     else
     {
-        stt->doEmitionRedFoundData("No password/login list found");
-        stt->doEmitionKillSttThread();
+        // Don't kill thread if file doesn't exist - maybe it will be created later
+        stt->doEmitionYellowFoundData("Warning: SSH password list file not found: " + QString(SSH_PASS_FN));
     };
 }
 void updateWFLogin() {
@@ -390,6 +390,9 @@ void updateFTPPass() {
 }
 long getFileSize(const char *fileName) {
     std::ifstream in(fileName, std::ifstream::ate | std::ifstream::binary);
+    if (!in.is_open()) {
+        return -1; // File doesn't exist
+    }
     return in.tellg();
 }
 
@@ -397,10 +400,12 @@ void updateList(const char *fileName, long *szPtr, void *funcPtr(void)) {
 	if (!globalScanFlag) return;
     long sz = getFileSize(fileName);
 
-    if(sz != *szPtr) {
+    // Only load/reload if file size changed (or first load when *szPtr is 0)
+    // If file doesn't exist (sz == -1), still try to load once to show warning
+    if(sz != *szPtr && (*szPtr == 0 || sz != -1)) {
         FileUpdater::lk = std::unique_lock<std::mutex> (FileUpdater::filesUpdatingMutex);
         funcPtr();
-        *szPtr = sz;
+        *szPtr = sz; // Store -1 for non-existent files to avoid repeated warnings
         FileUpdater::lk.unlock();
         FileUpdater::ready = true;
         FileUpdater::cv.notify_one();
@@ -418,6 +423,9 @@ void FileUpdater::updateLists() {
 }
 
 void FileUpdater::loadOnce() {
+	// Use updateList which handles file size checking to avoid double loading
+	// On first call, file sizes are 0, so lists will be loaded
+	// On subsequent calls, lists are only reloaded if file size changed
 	updateList(NEGATIVE_FN, &oldNegLstSize, (void*(*)(void))updateNegatives);
 	updateList(LOGIN_FN, &oldLoginLstSize, (void*(*)(void))updateLogin);
 	updateList(PASS_FN, &oldPassLstSize, (void*(*)(void))updatePass);
@@ -426,6 +434,14 @@ void FileUpdater::loadOnce() {
 	updateList(WF_PASS_FN, &oldWFPassLstSize, (void*(*)(void))updateWFPass);
 	updateList(FTP_LOGIN_FN, &oldFTPLoginLstSize, (void*(*)(void))updateFTPLogin);
 	updateList(FTP_PASS_FN, &oldFTPPassLstSize, (void*(*)(void))updateFTPPass);
+	
+	// Ensure ready flag is set after loading
+	if (!FileUpdater::ready) {
+		FileUpdater::lk = std::unique_lock<std::mutex> (FileUpdater::filesUpdatingMutex);
+		FileUpdater::ready = true;
+		FileUpdater::cv.notify_all();
+		FileUpdater::lk.unlock();
+	}
 }
 
 void FileUpdater::FUClear() {

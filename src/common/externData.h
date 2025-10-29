@@ -1,6 +1,7 @@
 #ifndef EXTERNDATA_H
 #define EXTERNDATA_H
 #include <atomic>
+#include <mutex>
 
 #include <qjsonarray.h>
 #define RECV_MAX_SIZE 350000
@@ -24,6 +25,7 @@ extern QJsonArray *jsonArr;
 extern unsigned long long gTargetsNumber;
 extern long long unsigned int gTargets;
 extern std::atomic<int> cons, BrutingThrds, gThreads;
+extern std::mutex fileWriteMutex;
 extern char **loginLst, **passLst,
 **wfLoginLst, **wfPassLst,
 **ftpLoginLst, **ftpPassLst,
