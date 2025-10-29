@@ -12,6 +12,7 @@
 #include <QMap>
 #include <QTimer>
 #include <QObject>
+#include <QThread>
 #include <iostream>
 #include <cstring>
 #include <chrono>
@@ -1224,8 +1225,23 @@ int main(int argc, char *argv[])
 		delete networkMonitor;
 		networkMonitor = nullptr;
 	}
-	delete stt;
-	stt = nullptr;
+	
+	// Safe cleanup of stt - wait for any remaining operations
+	if (stt) {
+		// Make sure scan is stopped
+		globalScanFlag = false;
+		
+		// Wait a bit for threads to finish
+		QThread::msleep(100);
+		
+		// Only delete if stt is still valid
+		try {
+			delete stt;
+			stt = nullptr;
+		} catch (...) {
+			// Ignore exceptions during cleanup
+		}
+	}
 	
 	return 0;
 }

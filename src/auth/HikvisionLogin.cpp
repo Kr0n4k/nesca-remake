@@ -131,6 +131,12 @@ bool HikVis::checkHikk(const char * sDVRIP, int port) {
 			return false;
 		}
 		else {
+			// Debug: Always show buffer content for troubleshooting
+			stt->doEmitionFoundData("iVMS check - Buffer size: " + QString::number(bsz) + " [<a href=\"http://" + QString(sDVRIP) + ":" + QString::number(port) +
+				"/\"><font color=\"#0084ff\">" + QString(sDVRIP) + ":" + QString::number(port) + "</font></a>]");
+			stt->doEmitionFoundData("Buffer hex: " + QString(buff).toLocal8Bit().toHex());
+			stt->doEmitionFoundData("Byte 3: " + QString::number((unsigned char)buff[3]) + " (expected: 16)");
+			
 			if (buff[3] == 0x10) {
 				if (gNegDebugMode)
 				{
@@ -221,6 +227,12 @@ bool HikVis::checkRVI(const char * sDVRIP, int port) {
 			return false;
 		}
 		else {
+			// Debug: Always show buffer content for troubleshooting
+			stt->doEmitionFoundData("RVI check - Buffer size: " + QString::number(bsz) + " [<a href=\"http://" + QString(sDVRIP) + ":" + QString::number(port) +
+				"/\"><font color=\"#0084ff\">" + QString(sDVRIP) + ":" + QString::number(port) + "</font></a>]");
+			stt->doEmitionFoundData("Buffer hex: " + QString(buff).toLocal8Bit().toHex());
+			stt->doEmitionFoundData("First byte: " + QString::number((unsigned char)buff[0]) + " (expected: 160)");
+			
 			if (buff[0] == -80) {
 				if (gNegDebugMode)
 				{
@@ -373,7 +385,38 @@ lopaStr HikVis::hikLogin(const char * sDVRIP, int wDVRPort)
 
 			// Check if Hikvision SDK is available (only on Windows)
 			if (hik_init_ptr == NULL || hik_login_ptr == NULL || hik_cleanup_ptr == NULL) {
-				// SDK not available (Linux or not loaded), skip authentication
+				// SDK not available (Linux or not loaded), try alternative authentication
+				// Use HTTP-based authentication for Hikvision cameras on Linux
+				std::string buffer;
+				Connector con;
+				std::string lpString = std::string(login) + ":" + std::string(pass);
+				int res = con.nConnect(ip, wDVRPort, &buffer, NULL, NULL, &lpString, false);
+				
+				if (res > 0) {
+					// Check for successful authentication indicators
+					if (Utils::ustrstr(&buffer, "200 ok") != -1 || 
+						Utils::ustrstr(&buffer, "http/1.0 200") != -1 ||
+						Utils::ustrstr(&buffer, "http/1.1 200") != -1) {
+						
+						// Check that it's not an auth error
+						if (Utils::ustrstr(&buffer, "http/1.1 401 ") == -1 &&
+							Utils::ustrstr(&buffer, "http/1.0 401 ") == -1 &&
+							Utils::ustrstr(&buffer, "<statusValue>401</statusValue>") == -1 &&
+							Utils::ustrstr(&buffer, "<statusString>Unauthorized</statusString>") == -1) {
+							
+							strcpy(lps.login, login);
+							strcpy(lps.pass, pass);
+							
+							rowIndex = Utils::addBARow(QString(ip) + ":" + QString::number(wDVRPort), QString(login) + ":" + QString(pass), "OK", rowIndex);
+							
+							return lps;
+						}
+					}
+				}
+				
+				rowIndex = Utils::addBARow(QString(ip) + ":" + QString::number(wDVRPort), QString(login) + ":" + QString(pass), QString::number((passCounter / (double)(MaxPass*MaxLogin)) * 100).mid(0, 4) + "%", rowIndex);
+				++passCounter;
+				Sleep(200);
 				continue;
 			}
 

@@ -368,6 +368,17 @@ int sharedDetector(const char * ip, int port, const std::string *buffcpy, const 
 		}
 	}
 
+	// Check Hikvision/RVI ports regardless of buffer size
+	if (port == 8000) {
+		if (HikVis::checkHikk(ip, port))												return 4; //Hikkvision iVMS
+		else if (HikVis::checkRVI(ip, port))											return 5; //RVI
+	}
+	else if (port == 37777) {
+		if (HikVis::checkRVI(ip, port))													return 5; //RVI
+		else if(HikVis::checkHikk(ip, port))											return 4; //Hikkvision iVMS
+		else if (HikVis::checkSAFARI(ip, port))											return 6; //Safari CCTV
+	}
+	
 	if (buffcpy->size() == 0) {
 		if (port == 9000) {
 			if (HikVis::checkSAFARI(ip, port))												return 6; //Safari CCTV
@@ -378,34 +389,6 @@ int sharedDetector(const char * ip, int port, const std::string *buffcpy, const 
 				if (gNegDebugMode)
 				{
 					stt->doEmitionDebugFoundData("Safari CCTV check failed - ignoring [<a href=\"" + QString(ip) +
-						"/\"><font color=\"#0084ff\">" + QString(ip) + "</font></a>]");
-				}
-				return -1;
-			}
-		}
-		else if(port == 8000) {
-			if (HikVis::checkHikk(ip, port))												return 4; //Hikkvision iVMS
-			else if (HikVis::checkRVI(ip, port))											return 5; //RVI
-			//else if (HikVis::checkSAFARI(ip, port))											return 6; //Safari CCTV
-			else
-			{
-				if (gNegDebugMode)
-				{
-					stt->doEmitionDebugFoundData("Hikkvision iVMS check failed - ignoring [<a href=\"" + QString(ip) +
-						"/\"><font color=\"#0084ff\">" + QString(ip) + "</font></a>]");
-				}
-				return -1;
-			}
-		}
-		else if (port == 37777) {
-			if (HikVis::checkRVI(ip, port))													return 5; //RVI
-			else if(HikVis::checkHikk(ip, port))											return 4; //Hikkvision iVMS
-			else if (HikVis::checkSAFARI(ip, port))											return 6; //Safari CCTV
-			else
-			{
-				if (gNegDebugMode)
-				{
-					stt->doEmitionDebugFoundData("RVI check failed - ignoring [<a href=\"" + QString(ip) +
 						"/\"><font color=\"#0084ff\">" + QString(ip) + "</font></a>]");
 				}
 				return -1;

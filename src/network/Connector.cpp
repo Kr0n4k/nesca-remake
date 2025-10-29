@@ -239,7 +239,14 @@ int pConnect(const char* ip, const int port, std::string *buffer,
 				//curl_easy_setopt(curl, CURLOPT_DEBUGDATA, &config);
 				curl_easy_setopt(curl, CURLOPT_VERBOSE, 1L);
 			}
-			curl_easy_setopt(curl, CURLOPT_URL, ip);
+			// Construct full URL with protocol
+			std::string fullUrl = std::string(ip);
+			// Check if URL already has a protocol
+			if (fullUrl.find("://") == std::string::npos) {
+				// Add http:// prefix if not present
+				fullUrl = "http://" + fullUrl;
+			}
+			curl_easy_setopt(curl, CURLOPT_URL, fullUrl.c_str());
 			curl_easy_setopt(curl, CURLOPT_PORT, port);
 			
 			// Use custom User-Agent if provided
@@ -903,12 +910,87 @@ int Connector::connectToPort(char* ip, int port)
 		}
 		else if (size == -2) return -2;
 	} else {
-		if (portCheck(ip, port)) {
-			++Alive;//ME2
-			++found;//PieStat
-			Lexems lx;
-			lx.filler(ip, ip, port, &buffer, size, &lx);
-		};
+		// For special ports (37777, 8000, 34567, 9000), use direct connection
+		// instead of HTTP to properly detect Hikvision cameras
+		if (port == 37777 || port == 8000 || port == 34567 || port == 9000) {
+			// Use direct socket connection for Hikvision cameras
+			sockaddr_in sa;
+			sa.sin_family = AF_INET;
+			sa.sin_port = htons(port);
+			
+			hostent *host = NULL;
+#if defined(WIN32)
+			if (inet_addr(ip) != INADDR_NONE) sa.sin_addr.S_un.S_addr = inet_addr(ip);
+			else if (host = gethostbyname(ip)) ((unsigned long*)&sa.sin_addr)[0] = ((unsigned long**)host->h_addr_list)[0][0];
+#else
+			if (inet_addr(ip) != INADDR_NONE) sa.sin_addr.s_addr = inet_addr(ip);
+			else if (host = gethostbyname(ip)) ((unsigned long*)&sa.sin_addr)[0] = ((unsigned long**)host->h_addr_list)[0][0];
+#endif
+			else {
+				return -1;
+			}
+			
+			SOCKET sock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+			if (sock == INVALID_SOCKET) return -1;
+			
+			struct linger linger = { 1, gTimeOut };
+			setsockopt(sock, SOL_SOCKET, SO_LINGER, (const char *)&linger, sizeof(linger));
+			
+			int res = connect(sock, (sockaddr*)&sa, sizeof(sa));
+			if (res != SOCKET_ERROR) {
+				// Connection successful, now we can detect the camera type
+				// For Hikvision cameras, we need to send a probe and get response
+				if (port == 8000) {
+					// Try Hikvision iVMS protocol
+					send(sock, headerIVMS, 32, 0);
+					char tBuff[32] = { 0 };
+					int offset = 0;
+					int sz = 0;
+					int bsz = 0;
+					int timeout = 5;
+					int bTO;
+					while ((sz = recvWT(sock, tBuff, 16, timeout, &bTO)) > 0) {
+						memcpy(buffer.data() + offset, tBuff, sz);
+						offset += sz;
+						bsz += sz;
+					}
+					buffer.resize(bsz);
+				} else if (port == 37777) {
+					// Try RVI protocol
+					send(sock, headerRVI, 32, 0);
+					char tBuff[32] = { 0 };
+					int offset = 0;
+					int sz = 0;
+					int bsz = 0;
+					int bTO;
+					while ((sz = recvWT(sock, tBuff, 16, gTimeOut, &bTO)) > 0) {
+						memcpy(buffer.data() + offset, tBuff, sz);
+						offset += sz;
+						bsz += sz;
+					}
+					buffer.resize(bsz);
+				}
+				
+				++Alive;
+				++found;
+				Lexems lx;
+				lx.filler(ip, ip, port, &buffer, buffer.size(), &lx);
+				shutdown(sock, SD_BOTH);
+				closesocket(sock);
+			} else {
+				shutdown(sock, SD_BOTH);
+				closesocket(sock);
+				return -1;
+			}
+		} else {
+			// For other special ports, use portCheck
+			if (portCheck(ip, port)) {
+				++Alive;//ME2
+				++found;//PieStat
+				Lexems lx;
+				lx.filler(ip, ip, port, &buffer, size, &lx);
+			};
+		}
 	}
 	return 0;
 }
