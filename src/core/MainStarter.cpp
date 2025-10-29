@@ -29,6 +29,11 @@ int gBatchSize = 0;  // 0 = no batching, otherwise batch size for processing
 bool gDeepScan = false;  // Deep scan after device detection
 bool gVulnScan = false;  // Vulnerability scanning
 bool gServiceVersion = false;  // Service version detection
+bool gHttp2Enabled = true;  // HTTP/2 support enabled by default
+bool gWebSocketEnabled = true;  // WebSocket scanning enabled by default
+bool gQuicEnabled = true;  // QUIC protocol scanning enabled by default
+bool gShodanEnabled = false;  // Shodan API integration disabled by default
+char gShodanApiKey[256] = {0};  // Shodan API key
 int gMode;
 int PieCamerasC1 = 0, PieBA = 0, PieOther = 0, PieSSH = 0;
 int camerasC1 = 0, filtered = 0, Overl = 0, Alive = 0, saved = 0, other = 0, ssh = 0;

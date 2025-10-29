@@ -22,6 +22,7 @@
 #include <mainResources.h>
 #include <DeviceIdentifier.h>
 #include <InteractiveMode.h>
+#include <ShodanAuth.h>
 
 // Signal handler for graceful shutdown in monitor mode
 volatile bool gSignalReceived = false;
@@ -56,6 +57,17 @@ void printUsage(const char* progName) {
 	out << "  --max-rate RATE              Max requests per second (0 = unlimited, default: 0)" << Qt::endl;
 	out << "  --retries N                  Number of retries on failure (default: 0)" << Qt::endl;
 	out << "  --verify-ssl                 Verify SSL certificates (default: disabled)" << Qt::endl;
+	out << "  --http2                       Enable HTTP/2 support (default: enabled)" << Qt::endl;
+	out << "  --no-http2                    Disable HTTP/2 support" << Qt::endl;
+	out << "  --websocket                   Enable WebSocket scanning (default: enabled)" << Qt::endl;
+	out << "  --no-websocket                Disable WebSocket scanning" << Qt::endl;
+	out << "  --quic                        Enable QUIC protocol scanning (default: enabled)" << Qt::endl;
+	out << "  --no-quic                     Disable QUIC protocol scanning" << Qt::endl;
+	out << "  --shodan-api-key KEY         Shodan API key for integration" << Qt::endl;
+	out << "  --shodan-query QUERY         Search Shodan with query (e.g., 'apache country:US')" << Qt::endl;
+	out << "  --shodan-host IP             Get Shodan information for specific IP" << Qt::endl;
+	out << "  --shodan-port PORT           Search Shodan for specific port" << Qt::endl;
+	out << "  --shodan-count QUERY         Count results for Shodan query" << Qt::endl;
 	out << "  --user-agent STRING          Custom User-Agent string" << Qt::endl;
 	out << "  --adaptive                   Enable adaptive thread adjustment based on network load" << Qt::endl;
 	out << "  --smart-scan                 Prioritize popular ports for found IPs" << Qt::endl;
@@ -303,6 +315,51 @@ int main(int argc, char *argv[])
 			}
 		} else if (strcmp(argv[i], "--verify-ssl") == 0) {
 			gVerifySSL = true;
+		} else if (strcmp(argv[i], "--http2") == 0) {
+			gHttp2Enabled = true;
+		} else if (strcmp(argv[i], "--no-http2") == 0) {
+			gHttp2Enabled = false;
+		} else if (strcmp(argv[i], "--websocket") == 0) {
+			gWebSocketEnabled = true;
+		} else if (strcmp(argv[i], "--no-websocket") == 0) {
+			gWebSocketEnabled = false;
+		} else if (strcmp(argv[i], "--quic") == 0) {
+			gQuicEnabled = true;
+		} else if (strcmp(argv[i], "--no-quic") == 0) {
+			gQuicEnabled = false;
+		} else if (strcmp(argv[i], "--shodan-api-key") == 0) {
+			if (i + 1 < argc) {
+				strncpy(gShodanApiKey, argv[++i], sizeof(gShodanApiKey) - 1);
+				gShodanApiKey[sizeof(gShodanApiKey) - 1] = '\0';
+				gShodanEnabled = true;
+			}
+		} else if (strcmp(argv[i], "--shodan-query") == 0) {
+			if (i + 1 < argc && strlen(gShodanApiKey) > 0) {
+				// Handle Shodan query
+				char* query = argv[++i];
+				std::string queryStr = query;
+				// This will be handled in the scan logic
+				cliArgs["shodan_query"] = QString::fromStdString(queryStr);
+				gShodanEnabled = true;
+			}
+		} else if (strcmp(argv[i], "--shodan-host") == 0) {
+			if (i + 1 < argc && strlen(gShodanApiKey) > 0) {
+				char* ip = argv[++i];
+				cliArgs["shodan_host"] = QString::fromUtf8(ip);
+				gShodanEnabled = true;
+			}
+		} else if (strcmp(argv[i], "--shodan-port") == 0) {
+			if (i + 1 < argc && strlen(gShodanApiKey) > 0) {
+				char* port = argv[++i];
+				cliArgs["shodan_port"] = QString::fromUtf8(port);
+				gShodanEnabled = true;
+			}
+		} else if (strcmp(argv[i], "--shodan-count") == 0) {
+			if (i + 1 < argc && strlen(gShodanApiKey) > 0) {
+				char* query = argv[++i];
+				cliArgs["shodan_count"] = QString::fromUtf8(query);
+				gShodanEnabled = true;
+			}
 		} else if (strcmp(argv[i], "--adaptive") == 0) {
 			gAdaptiveScan = true;
 		} else if (strcmp(argv[i], "--smart-scan") == 0) {
@@ -682,6 +739,161 @@ int main(int argc, char *argv[])
 		QTextStream err(stderr);
 		err << "Error: No target specified" << Qt::endl;
 		return 1;
+	}
+	
+	// Handle Shodan API queries before scanning
+	if (gShodanEnabled && strlen(gShodanApiKey) > 0) {
+		QTextStream out(stdout);
+		out << Qt::endl << "[INFO] Shodan API integration enabled" << Qt::endl;
+		
+		// Test API key
+		if (!ShodanAuth::testApiKey(gShodanApiKey)) {
+			out << "[WARN] Shodan API key validation failed. Please check your API key." << Qt::endl;
+		} else {
+			out << "[OK] Shodan API key validated" << Qt::endl;
+			
+			// Handle Shodan query
+			if (cliArgs.contains("shodan_query")) {
+				QString query = cliArgs["shodan_query"];
+				out << "[INFO] Searching Shodan for: " << query << Qt::endl;
+				
+				ShodanSearchResult result = ShodanAuth::searchHosts(
+					gShodanApiKey, 
+					query.toStdString().c_str(), 
+					1, 
+					true
+				);
+				
+				if (result.success) {
+					out << "[OK] Found " << result.total << " results" << Qt::endl;
+					out << "[INFO] Showing first " << result.matches.size() << " matches:" << Qt::endl;
+					
+					for (size_t i = 0; i < result.matches.size() && i < 10; ++i) {
+						const ShodanHost& host = result.matches[i];
+						out << "  [" << (i + 1) << "] " << QString::fromStdString(host.ip);
+						if (!host.hostname.empty()) {
+							out << " (" << QString::fromStdString(host.hostname) << ")";
+						}
+						if (!host.port.empty()) {
+							out << " - Port: " << QString::fromStdString(host.port);
+						}
+						if (!host.product.empty()) {
+							out << " - " << QString::fromStdString(host.product);
+							if (!host.version.empty()) {
+								out << "/" << QString::fromStdString(host.version);
+							}
+						}
+						if (!host.country.empty()) {
+							out << " (" << QString::fromStdString(host.country) << ")";
+						}
+						out << Qt::endl;
+					}
+					
+					if (result.total > (int)result.matches.size()) {
+						out << "[INFO] Use Shodan web interface for full results" << Qt::endl;
+					}
+				} else {
+					out << "[ERROR] Shodan query failed: " << QString::fromStdString(result.error) << Qt::endl;
+				}
+			}
+			
+			// Handle Shodan host info
+			if (cliArgs.contains("shodan_host")) {
+				QString ip = cliArgs["shodan_host"];
+				out << "[INFO] Getting Shodan info for: " << ip << Qt::endl;
+				
+				ShodanHostInfoResult result = ShodanAuth::getHostInfo(
+					gShodanApiKey,
+					ip.toStdString().c_str()
+				);
+				
+				if (result.success) {
+					out << "[OK] Host information retrieved" << Qt::endl;
+					out << "  IP: " << QString::fromStdString(result.hostInfo.ip) << Qt::endl;
+					if (!result.hostInfo.hostname.empty()) {
+						out << "  Hostname: " << QString::fromStdString(result.hostInfo.hostname) << Qt::endl;
+					}
+					if (!result.hostInfo.org.empty()) {
+						out << "  Organization: " << QString::fromStdString(result.hostInfo.org) << Qt::endl;
+					}
+					if (!result.hostInfo.os.empty()) {
+						out << "  OS: " << QString::fromStdString(result.hostInfo.os) << Qt::endl;
+					}
+					if (!result.hostInfo.country.empty()) {
+						out << "  Country: " << QString::fromStdString(result.hostInfo.country);
+						if (!result.hostInfo.city.empty()) {
+							out << ", " << QString::fromStdString(result.hostInfo.city);
+						}
+						out << Qt::endl;
+					}
+					out << "  Ports: " << result.hostInfo.portsCount << " open ports" << Qt::endl;
+					for (size_t i = 0; i < result.hostInfo.services.size() && i < 10; ++i) {
+						const ShodanHost& service = result.hostInfo.services[i];
+						out << "    - Port " << QString::fromStdString(service.port);
+						if (!service.product.empty()) {
+							out << ": " << QString::fromStdString(service.product);
+							if (!service.version.empty()) {
+								out << " " << QString::fromStdString(service.version);
+							}
+						}
+						out << Qt::endl;
+					}
+				} else {
+					out << "[ERROR] Failed to get host info: " << QString::fromStdString(result.error) << Qt::endl;
+				}
+			}
+			
+			// Handle Shodan port search
+			if (cliArgs.contains("shodan_port")) {
+				QString port = cliArgs["shodan_port"];
+				out << "[INFO] Searching Shodan for port: " << port << Qt::endl;
+				
+				ShodanSearchResult result = ShodanAuth::searchPort(
+					gShodanApiKey,
+					port.toStdString().c_str(),
+					"",
+					1
+				);
+				
+				if (result.success) {
+					out << "[OK] Found " << result.total << " hosts with port " << port << Qt::endl;
+					for (size_t i = 0; i < result.matches.size() && i < 10; ++i) {
+						const ShodanHost& host = result.matches[i];
+						out << "  [" << (i + 1) << "] " << QString::fromStdString(host.ip);
+						if (!host.country.empty()) {
+							out << " (" << QString::fromStdString(host.country) << ")";
+						}
+						out << Qt::endl;
+					}
+				} else {
+					out << "[ERROR] Shodan port search failed: " << QString::fromStdString(result.error) << Qt::endl;
+				}
+			}
+			
+			// Handle Shodan count
+			if (cliArgs.contains("shodan_count")) {
+				QString query = cliArgs["shodan_count"];
+				out << "[INFO] Counting results for: " << query << Qt::endl;
+				
+				int count = ShodanAuth::countResults(
+					gShodanApiKey,
+					query.toStdString().c_str()
+				);
+				
+				if (count >= 0) {
+					out << "[OK] Total results: " << count << Qt::endl;
+				} else {
+					out << "[ERROR] Failed to count results" << Qt::endl;
+				}
+			}
+			
+			// If only Shodan queries were requested, exit
+			if (cliArgs.contains("shodan_query") || cliArgs.contains("shodan_host") || 
+			    cliArgs.contains("shodan_port") || cliArgs.contains("shodan_count")) {
+				out << Qt::endl;
+				return 0;
+			}
+		}
 	}
 	
 	// Set up scan parameters

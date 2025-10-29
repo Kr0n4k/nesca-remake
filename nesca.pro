@@ -64,7 +64,10 @@ SOURCES += src/auth/BasicAuth.cpp \
            src/auth/RTSP.cpp \
            src/auth/IPCAuth.cpp \
            src/auth/HikvisionLogin.cpp \
-           src/auth/WebformWorker.cpp
+           src/auth/WebformWorker.cpp \
+           src/auth/WebSocketAuth.cpp \
+           src/auth/QuicAuth.cpp \
+           src/auth/ShodanAuth.cpp
 
 HEADERS += src/auth/BasicAuth.h \
            src/auth/FTPAuth.h \
@@ -72,7 +75,10 @@ HEADERS += src/auth/BasicAuth.h \
            src/auth/RTSP.h \
            src/auth/IPCAuth.h \
            src/auth/HikvisionLogin.h \
-           src/auth/WebformWorker.h
+           src/auth/WebformWorker.h \
+           src/auth/WebSocketAuth.h \
+           src/auth/QuicAuth.h \
+           src/auth/ShodanAuth.h
 
 # Exporters
 SOURCES += src/exporters/ResultExporter.cpp
@@ -152,6 +158,7 @@ OTHER_FILES += \
 unix|win32: LIBS += -lssh
 unix|win32: LIBS += -lcrypto
 unix|win32: LIBS += -lcurl
+unix|win32: LIBS += -lnghttp2
 unix|win32: LIBS += -lm
 win32: LIBS += -lws2_32
 

@@ -1,5 +1,7 @@
 #include <Connector.h>
 #include <SSHAuth.h>
+#include <WebSocketAuth.h>
+#include <QuicAuth.h>
 #include <externData.h>
 #include <errno.h>
 #include <chrono>
@@ -251,6 +253,11 @@ int pConnect(const char* ip, const int port, std::string *buffer,
 			curl_easy_setopt(curl, CURLOPT_HEADER, 1L);
 			curl_easy_setopt(curl, CURLOPT_AUTOREFERER, 1L);
 			
+			// HTTP/2 support
+			if (gHttp2Enabled) {
+				curl_easy_setopt(curl, CURLOPT_HTTP_VERSION, CURL_HTTP_VERSION_2_0);
+			}
+			
 			// SSL verification settings
 			if (gVerifySSL) {
 				curl_easy_setopt(curl, CURLOPT_SSL_VERIFYSTATUS, 1L);
@@ -426,6 +433,11 @@ int pConnectRTSP(const char* ip, const int port, std::string *buffer, const std:
 		curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, nWriteCallback);
 		curl_easy_setopt(curl, CURLOPT_WRITEDATA, buffer);
 		
+		// HTTP/2 support for RTSP
+		if (gHttp2Enabled) {
+			curl_easy_setopt(curl, CURLOPT_HTTP_VERSION, CURL_HTTP_VERSION_2_0);
+		}
+		
 		// SSL verification settings
 		if (gVerifySSL) {
 			curl_easy_setopt(curl, CURLOPT_SSL_VERIFYSTATUS, 1L);
@@ -484,6 +496,87 @@ void cutoutComments(std::string *buffer) {
 	eraser(buffer, "/*", "*/");
 }
 
+// Function to detect HTTP/2 in response headers
+bool detectHttp2InResponse(const std::string *buffer) {
+	if (buffer->empty()) return false;
+	
+	// Look for HTTP/2 specific headers or indicators
+	return (buffer->find("HTTP/2") != std::string::npos ||
+			buffer->find("h2") != std::string::npos ||
+			buffer->find("HTTP2") != std::string::npos);
+}
+
+// Function to detect WebSocket support in response headers
+bool detectWebSocketInResponse(const std::string *buffer) {
+	if (buffer->empty()) return false;
+	
+	// Look for WebSocket specific headers or indicators
+	return (buffer->find("Upgrade: websocket") != std::string::npos ||
+			buffer->find("Sec-WebSocket") != std::string::npos ||
+			buffer->find("101 Switching Protocols") != std::string::npos ||
+			buffer->find("websocket") != std::string::npos);
+}
+
+// Function to detect QUIC support in response headers
+bool detectQuicInResponse(const std::string *buffer) {
+	if (buffer->empty()) return false;
+	
+	// Look for QUIC specific headers or indicators
+	return (buffer->find("Alt-Svc: h3") != std::string::npos ||
+			buffer->find("quic") != std::string::npos ||
+			buffer->find("h3=") != std::string::npos ||
+			buffer->find("HTTP/3") != std::string::npos ||
+			buffer->find("Q043") != std::string::npos ||
+			buffer->find("Q046") != std::string::npos ||
+			buffer->find("Q050") != std::string::npos);
+}
+
+// WebSocket connection function
+int pConnectWebSocket(const char* ip, const int port, std::string *buffer, const char* path = "/", bool useSSL = false) {
+	// Enforce rate limiting
+	enforceRateLimit();
+	
+	buffer->clear();
+	
+	if (!gWebSocketEnabled) {
+		return -1;
+	}
+	
+	// Test WebSocket connection
+	WebSocketAuth::WebSocketResult result = WebSocketAuth::testWebSocketEndpoint(ip, port, path, useSSL);
+	
+	if (result.success) {
+		*buffer = result.response;
+		return buffer->size();
+	} else {
+		*buffer = "WebSocket connection failed: " + result.error;
+		return -1;
+	}
+}
+
+// QUIC connection function
+int pConnectQuic(const char* ip, const int port, std::string *buffer, const char* hostname = nullptr, bool useHttp3 = true) {
+	// Enforce rate limiting
+	enforceRateLimit();
+	
+	buffer->clear();
+	
+	if (!gQuicEnabled) {
+		return -1;
+	}
+	
+	// Test QUIC connection
+	QuicAuth::QuicResult result = QuicAuth::testQuicEndpoint(ip, port, hostname);
+	
+	if (result.success) {
+		*buffer = result.response;
+		return buffer->size();
+	} else {
+		*buffer = "QUIC connection failed: " + result.error;
+		return -1;
+	}
+}
+
 int Connector::nConnect(const char* ip, const int port, std::string *buffer,
                         const char *postData,
                         const std::vector<std::string> *customHeaders,
@@ -499,6 +592,27 @@ int Connector::nConnect(const char* ip, const int port, std::string *buffer,
 		res = pConnectRTSP(ip, port, buffer, lpString, isDigest);
 	}
 	cutoutComments(buffer);
+
+	// Check for HTTP/2 response and log if detected
+	if (res > 0 && detectHttp2InResponse(buffer)) {
+		if (gDebugMode) {
+			stt->doEmitionYellowFoundData("[HTTP/2] Detected HTTP/2 response from " + QString(ip));
+		}
+	}
+	
+	// Check for WebSocket support and log if detected
+	if (res > 0 && detectWebSocketInResponse(buffer)) {
+		if (gDebugMode) {
+			stt->doEmitionYellowFoundData("[WebSocket] Detected WebSocket support from " + QString(ip));
+		}
+	}
+	
+	// Check for QUIC support and log if detected
+	if (res > 0 && detectQuicInResponse(buffer)) {
+		if (gDebugMode) {
+			stt->doEmitionYellowFoundData("[QUIC] Detected QUIC support from " + QString(ip));
+		}
+	}
 
 	if (MapWidgetOpened) stt->doEmitionAddIncData(QString(ip), QString(buffer->c_str()));
 	Activity += buffer->size();
@@ -540,6 +654,11 @@ int Connector::checkIsDigestRTSP(const char *ip, std::string *buffer) {
 		curl_easy_setopt(curl, CURLOPT_HEADER, 1L);
 		curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, nWriteCallback);
 		curl_easy_setopt(curl, CURLOPT_WRITEDATA, buffer);
+		
+		// HTTP/2 support for RTSP
+		if (gHttp2Enabled) {
+			curl_easy_setopt(curl, CURLOPT_HTTP_VERSION, CURL_HTTP_VERSION_2_0);
+		}
 		
 		// SSL verification settings
 		if (gVerifySSL) {
@@ -745,7 +864,35 @@ int Connector::connectToPort(char* ip, int port)
 	if (port != 37777 && port != 8000 && port != 34567 && port != 9000){
 		if (port == 22) size = SSHAuth::SSHLobby(ip, port, &buffer);			//SSH
 		else if (21 == port) size = nConnect(ip, port, &buffer);
-		else size = nConnect(tempIp, port, &buffer);
+		else {
+			size = nConnect(tempIp, port, &buffer);
+			
+			// Test WebSocket if HTTP connection was successful and WebSocket is enabled
+			if (size > 0 && gWebSocketEnabled && (port == 80 || port == 443 || port == 8080 || port == 8443)) {
+				std::string wsBuffer;
+				int wsSize = pConnectWebSocket(ip, port, &wsBuffer, "/", (port == 443 || port == 8443));
+				if (wsSize > 0) {
+					if (gDebugMode) {
+						stt->doEmitionYellowFoundData("[WebSocket] Found WebSocket endpoint: " + QString(ip) + ":" + QString::number(port));
+					}
+					// Add WebSocket info to buffer
+					buffer += "\n[WebSocket] Endpoint available at /";
+				}
+			}
+			
+			// Test QUIC if HTTP connection was successful and QUIC is enabled
+			if (size > 0 && gQuicEnabled && (port == 80 || port == 443 || port == 8080 || port == 8443)) {
+				std::string quicBuffer;
+				int quicSize = pConnectQuic(ip, port, &quicBuffer, nullptr, true);
+				if (quicSize > 0) {
+					if (gDebugMode) {
+						stt->doEmitionYellowFoundData("[QUIC] Found QUIC endpoint: " + QString(ip) + ":" + QString::number(port));
+					}
+					// Add QUIC info to buffer
+					buffer += "\n[QUIC] Protocol available";
+				}
+			}
+		}
 
 		if (size > 0)
 		{

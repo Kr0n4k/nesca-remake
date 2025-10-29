@@ -6,7 +6,7 @@
 #include <qjsonarray.h>
 #define RECV_MAX_SIZE 350000
 #define REQUEST_MAX_SIZE 4096
-#define PORTSET "80,81,88,8080,8081,60001,60002,8008,8888,554,9000,3536,21"
+#define PORTSET "80,81,88,443,8080,8081,8443,60001,60002,8008,8888,554,9000,3536,21"
 #define CSSOCKET(Socket) shutdown(Socket, SD_BOTH); closesocket(Socket); Socket = -1;
 
 #ifndef CP_UTF8
@@ -47,13 +47,13 @@ extern int found, indexIP, gMode,
     ssh, globalPinger, gPingTimeout,
 	cIndex, gMaxRate, gRetries, gBatchSize;
 extern unsigned int Activity;
-extern bool gVerifySSL, gAdaptiveScan, gSmartScan, gDeepScan, gVulnScan, gServiceVersion;
+extern bool gVerifySSL, gAdaptiveScan, gSmartScan, gDeepScan, gVulnScan, gServiceVersion, gHttp2Enabled, gWebSocketEnabled, gQuicEnabled, gShodanEnabled;
 extern char trcSrv[256], trcScr[256], trcProxy[128], trcPersKey[64],
     trcPort[32], trcSrvPortLine[32],
     gTLD[128], gPorts[1024],
     gProxyIP[64], gProxyPort[8],
     currentIP[MAX_ADDR_LEN],
-    finalIP[32], gUserAgent[256];
+    finalIP[32], gUserAgent[256], gShodanApiKey[256];
 
 extern char gVER[32];
 
