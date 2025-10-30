@@ -1,188 +1,148 @@
-# GUI Улучшения - Nesca v2r
+# GUI Design Improvements
 
-## ✅ Реализованные улучшения
+## Overview
+The Nesca v2r GUI has been enhanced with a modern, professional dark theme that improves both visual appeal and user experience.
 
-### 1. Современный дизайн
+## Key Changes
 
-#### Темная тема с акцентами
-- **Цветовая схема**: Темная тема (#1e1e23) с акцентами (#64a5ff)
-- **Скругленные углы**: Современные border-radius для всех элементов
-- **Градиенты**: Красивые градиенты для прогресс-бара
-- **Hover эффекты**: Плавные переходы при наведении
+### 1. Color Palette
+- **Primary Blue**: `#60a5fa` - Used for highlights, active states, and primary actions
+- **Dark Background**: Gradient from `#1c1c21` to `#16161a` for depth
+- **Panel Background**: Gradient from `#242429` to `#202024`
+- **Input Fields**: Gradient backgrounds for better visibility
+- **Accent Color**: `#e8e8e8` for text and borders
 
-#### Улучшенные компоненты
-- **Кнопки**: Современный стиль с hover и pressed состояниями
-- **Поля ввода**: С выделением фокуса (#64a5ff)
-- **Чекбоксы**: Кастомные чекбоксы с галочками
-- **Комбобоксы**: Стилизованные стрелки выпадающего списка
-- **Таблицы**: Чередующиеся строки, улучшенный выбор
-- **Прогресс-бар**: Градиентная заливка с анимацией
-- **Скроллбары**: Тонкие, стильные скроллбары
+### 2. Visual Enhancements
 
-### 2. Улучшенная функциональность
+#### Main Window
+- Gradient background instead of solid color
+- Smoother color transitions
 
-#### Tooltips и подсказки
-- **Везде tooltips**: Каждое поле имеет подсказку
-- **Информативные сообщения**: Детальное описание каждого параметра
-- **Примеры использования**: Конкретные примеры в placeholder'ах
+#### Tab Widgets
+- Gradient backgrounds for inactive tabs
+- 3px border for selected tabs in primary blue
+- Improved hover effects
+- Better spacing and padding
 
-#### Улучшенное меню
-- **File**: Открытие логов
-- **View**: Быстрое переключение между вкладками
-- **Tools**: Генерация CLI команд из настроек
-- **Help**: Подробная документация
+#### Buttons
+- **Start Button**: Blue gradient (`#60a5fa` → `#4d8fef`)
+  - White text, bold font
+  - Enhanced hover and pressed states
+  - Play icon (▶) added
+- **Stop Button**: Red gradient (`#ef4444` → `#dc2626`)
+  - White text, bold font
+  - Stop icon (⏹) added
+  - Disabled state properly styled
 
-#### Клавиатурные сокращения
-- `Ctrl+O`: Открыть логи
-- `Ctrl+Shift+C`: Показать CLI команду
-- `F1`: Открыть руководство пользователя
-- `Ctrl+Q`: Выход
+#### Form Elements
+- **Line Edits**: Gradient backgrounds with focus borders
+- **Spin Boxes**: Matching gradient style
+- **Combo Boxes**: Improved dropdown arrows
+- **Checkboxes**: Larger size (20x20px), gradient backgrounds when checked
+- **Form Layouts**: Better spacing (12px vertical)
 
-### 3. Интеграция с CLI
+#### Group Boxes
+- Titles with emojis: ⚙ for Advanced Options, 📊 for Export Options
+- Larger border-radius (8px)
+- Better title background gradients
 
-#### Генерация CLI команд
-- **Автоматическое преобразование**: Настройки GUI → CLI команда
-- **Полная совместимость**: Все опции учитываются
-- **Копируемая команда**: Можно скопировать и использовать в терминале
+#### Tables
+- Gradient backgrounds
+- Improved row selection with gradient highlights
+- Better header styling with bold fonts
+- Enhanced gridlines
 
-#### Пример использования:
-```
-GUИ настройки:
-- Mode: IP Range
-- Target: 192.168.1.0/24
-- Ports: 80,443,8080
-- Threads: 200
-- Adaptive scan: ✓
-- Smart scan: ✓
+#### Progress Bar
+- Gradient chunk colors
+- 20px height for better visibility
+- Improved border-radius
 
-CLI эквивалент:
-./nesca --ip 192.168.1.0/24 -p 80,443,8080 -t 200 --adaptive --smart-scan
-```
+#### Status Bar
+- Gradient background
+- 2px top border
+- Better label colors
 
-### 4. Улучшенный UX
+#### Scroll Bars
+- Modern transparent design
+- Larger handles (14px)
+- Gradient hover effects
+- Hidden arrows
 
-#### Валидация
-- Проверка корректности IP диапазонов
-- Валидация портов
-- Предупреждения о некорректных настройках
+#### Menus
+- Dark background with gradients
+- Smooth hover effects
+- Better separator styling
+- Improved item padding
 
-#### Обратная связь
-- Статус-бар с прогрессом
-- Цветовая индикация состояния
-- Подробные сообщения об ошибках
+### 3. Welcome Section
+Added to ScanConfiguration widget:
+- **Title**: "Nesca v2r - Network Scanner" in primary blue, bold, 18px
+- **Info Text**: Helpful guidance in gray color
+- Better visual hierarchy
 
-#### Организация интерфейса
-- Сгруппированные опции
-- Логичная структура
-- Четкое разделение секций
+### 4. Typography
+- **Bold fonts** for labels and important elements
+- **Font weight 600-700** for emphasis
+- **Consistent spacing** across all elements
 
-## 🎨 Цветовая схема
+### 5. Spacing & Layout
+- Increased padding and margins (25px on main layouts)
+- Better vertical spacing (18px)
+- Improved form layout spacing (12px)
+- More breathing room between elements
 
-### Основные цвета
-- **Фон**: #1e1e23 (темный)
-- **Акцент**: #64a5ff (синий)
-- **Текст**: #e0e0e0 (светлый)
-- **Границы**: #3e3e43 (серый)
+## Technical Implementation
 
-### Состояния
-- **Hover**: #4e4e53 (светлее)
-- **Pressed**: #2e2e33 (темнее)
-- **Disabled**: #2a2a2f (темный + серая)
-- **Selected**: #64a5ff (акцентный)
+### Qt Stylesheets
+All improvements use Qt Stylesheet system with:
+- Gradient backgrounds using `qlineargradient`
+- Modern border-radius values (5-8px)
+- Consistent color scheme throughout
+- Proper state management (hover, pressed, disabled, selected)
 
-## 📱 Адаптивность
+### Files Modified
+1. **main_gui.cpp**: Complete stylesheet overhaul
+2. **src/ui/ScanConfiguration.cpp**: Added welcome section and button styling
 
-### Размеры окон
-- **Минимальный**: 900x650
-- **Размер по умолчанию**: 1200x800
-- **Расширяемые панели**: Разделители для изменения размеров
+## User Experience Improvements
 
-### Responsive дизайн
-- Адаптивные layouts
-- Плавное изменение размеров
-- Оптимизация для разных разрешений
+1. **Better Visual Feedback**:
+   - Clear hover states on all interactive elements
+   - Smooth gradient transitions
+   - Distinct active/inactive states
 
-## 🚀 Производительность
+2. **Improved Readability**:
+   - Higher contrast text
+   - Better spacing
+   - Clearer hierarchy
 
-### Оптимизации
-- Lazy loading компонентов
-- Эффективное обновление UI
-- Минимальные перерисовки
+3. **Professional Appearance**:
+   - Modern dark theme
+   - Consistent styling
+   - Polished details
 
-### Потоки
-- Сканирование в отдельном потоке
-- UI остается отзывчивым
-- Плавная анимация прогресса
+4. **Enhanced Usability**:
+   - Larger clickable areas
+   - Clear visual indicators
+   - Improved form organization
 
-## 📋 Сравнение: До и После
+## Screenshots
+The new design features:
+- A clean, modern interface
+- Professional gradient effects
+- Intuitive color coding (blue for actions, red for stop)
+- Enhanced visual hierarchy
+- Improved spacing and layout
 
-### До улучшений
-- Базовый темный стиль
-- Без tooltips
-- Минимум навигации
-- Нет интеграции с CLI
+## Compatibility
+- Qt 5.x and 6.x compatible
+- All major platforms supported
+- No external dependencies required for theming
 
-### После улучшений
-- ✅ Современный дизайн
-- ✅ Подсказки везде
-- ✅ Улучшенная навигация
-- ✅ Полная CLI интеграция
-- ✅ Горячие клавиши
-- ✅ Валидация
-- ✅ Обратная связь
-
-## 🎯 Планы на будущее
-
-### Возможные улучшения
-1. **Темы**: Выбор цветовой схемы
-2. **Экспорт настроек**: Сохранение профилей
-3. **История сканирований**: Список последних сканирований
-4. **Графики**: Визуализация статистики
-5. **Плагины**: Расширяемость
-
-## 📖 Использование
-
-### Запуск
-```bash
-./nesca-gui
-```
-
-### Основные возможности
-1. **Настройка**: Выберите режим, укажите цель
-2. **Сканирование**: Нажмите Start Scan
-3. **Результаты**: Просматривайте в таблице
-4. **Детали**: Двойной клик по результату
-5. **Экспорт**: Сохраните результаты
-
-### Горячие клавиши
-- `Ctrl+Shift+C`: CLI команда
-- `F1`: Помощь
-- `Ctrl+Q`: Выход
-
-## 🛠️ Технические детали
-
-### Qt стилизация
-- QStyleSheet для полного контроля
-- Custom widgets
-- Palettes для цветов
-
-### Архитектура
-- MVС паттерн
-- Сигналы и слоты
-- Многопоточность
-
-### Совместимость
-- Qt 5.15+
-- C++14
-- Linux/Windows/macOS
-
-## 📝 Заключение
-
-GUI получил современный дизайн, улучшенную функциональность и полную интеграцию с CLI. Теперь пользователи могут:
-- Удобно работать через GUI
-- Использовать CLI для автоматизации
-- Легко переходить между режимами
-- Настраивать интерфейс под себя
-
-Приложение стало более профессиональным, удобным и функциональным.
-
+## Future Enhancements
+Potential future improvements:
+- Custom icons in the UI
+- Additional color themes
+- Animation effects on state changes
+- Custom window decorations
+- Expanded configuration options

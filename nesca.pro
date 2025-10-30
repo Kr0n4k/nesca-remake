@@ -102,7 +102,10 @@ SOURCES += src/network/Connector.cpp \
            src/ui/InteractiveMode.cpp \
            src/detectors/DeepScanner.cpp \
            src/detectors/VulnerabilityScanner.cpp \
-           src/detectors/ServiceVersionDetector.cpp
+           src/detectors/ServiceVersionDetector.cpp \
+           src/network/AsyncConnector.cpp \
+           src/network/AsyncHttpClient.cpp
+           src/network/DistServer.cpp
 
 HEADERS += src/network/Connector.h \
            src/network/Utils.h \
@@ -118,7 +121,10 @@ HEADERS += src/network/Connector.h \
            src/ui/InteractiveMode.h \
            src/detectors/DeepScanner.h \
            src/detectors/VulnerabilityScanner.h \
-           src/detectors/ServiceVersionDetector.h
+           src/detectors/ServiceVersionDetector.h \
+           src/network/AsyncConnector.h \
+           src/network/AsyncHttpClient.h
+           src/network/DistServer.h
 
 # UI components (optional, for GUI build)
 # Uncomment for GUI version:
@@ -159,8 +165,10 @@ OTHER_FILES += \
 
 unix|win32: LIBS += -lssh
 unix|win32: LIBS += -lcrypto
+unix|win32: LIBS += -lssl
 unix|win32: LIBS += -lcurl
 unix|win32: LIBS += -lnghttp2
 unix|win32: LIBS += -lm
+unix|win32: LIBS += -lboost_system
 win32: LIBS += -lws2_32
 

@@ -25,6 +25,8 @@
 #include <InteractiveMode.h>
 #include <ShodanAuth.h>
 #include <CensysAuth.h>
+#include <DistServer.h>
+#include <AsyncHttpClient.h>
 
 // Signal handler for graceful shutdown in monitor mode
 volatile bool gSignalReceived = false;
@@ -40,6 +42,17 @@ STh *stt = nullptr;
 
 // Initialize globalScanFlag for console mode (other variables are defined in MainStarter.cpp and FileUpdater.cpp)
 bool globalScanFlag = false;
+bool gUseAsioPortCheck = true;
+bool gUseAsioHttp = false; // default keep curl
+int gAsioThreads = 0; // 0 = auto
+int gAsioTimeoutMs = 0; // 0 = use gTimeOut
+int gAsioDnsTimeoutMs = 0; // 0 = follow Asio timeout
+int gAsioConnectTimeoutMs = 0; // 0 = follow Asio timeout
+int gDistMode = 0; // 0 off, 1 coordinator, 2 worker
+char gDistBindHost[64] = {0};
+int gDistBindPort = 0;
+char gDistCoordinatorUrl[256] = {0};
+int gDistBatch = 100;
 
 // Note: jsonArr is already defined in MainStarter.cpp, don't define it here
 
@@ -55,7 +68,13 @@ void printUsage(const char* progName) {
 	out << "Options:" << Qt::endl;
 	out << "  -p, --ports PORTS          Ports to scan (comma-separated, default: " << PORTSET << ")" << Qt::endl;
 	out << "  -t, --threads N              Number of threads (default: auto)" << Qt::endl;
-	out << "  --timeout MS                 Connection timeout in milliseconds (default: 3000)" << Qt::endl;
+    out << "  --timeout MS                 Connection timeout in milliseconds (default: 3000)" << Qt::endl;
+    out << "  --port-check ENGINE          Port check engine: asio|curl (default: asio)" << Qt::endl;
+    out << "  --http-engine ENGINE         HTTP engine: asio|curl (default: curl; asio = HTTP only)" << Qt::endl;
+    out << "  --asio-threads N             Asio io_context threads (default: auto)" << Qt::endl;
+    out << "  --asio-timeout-ms MS         Asio overall timeout (ms). Default uses --timeout" << Qt::endl;
+    out << "  --asio-dns-timeout-ms MS     Asio DNS resolve timeout (ms). Default uses overall" << Qt::endl;
+    out << "  --asio-connect-timeout-ms MS Asio TCP connect timeout (ms). Default uses overall" << Qt::endl;
 	out << "  --max-rate RATE              Max requests per second (0 = unlimited, default: 0)" << Qt::endl;
 	out << "  --retries N                  Number of retries on failure (default: 0)" << Qt::endl;
 	out << "  --verify-ssl                 Verify SSL certificates (default: disabled)" << Qt::endl;
@@ -102,7 +121,12 @@ void printUsage(const char* progName) {
 	out << "  --quick-camera-scan          Quick scan for IP cameras (ports 80,8080,554)" << Qt::endl;
 	out << "  --quick-server-scan          Quick scan for servers (ports 22,80,443,3389)" << Qt::endl;
 	out << "  --quick-network-scan         Quick scan for network equipment (ports 80,443,8080)" << Qt::endl;
-	out << "  --quick-iot-scan             Quick scan for IoT devices (ports 80,8080,8081)" << Qt::endl;
+    out << "  --quick-iot-scan             Quick scan for IoT devices (ports 80,8080,8081)" << Qt::endl;
+    out << "\nDistributed scanning:" << Qt::endl;
+    out << "  --dist-mode MODE             coordinator|worker (default: off)" << Qt::endl;
+    out << "  --dist-bind HOST:PORT        Bind address for coordinator" << Qt::endl;
+    out << "  --dist-coord URL             Coordinator base URL for worker (e.g., http://host:8088)" << Qt::endl;
+    out << "  --dist-batch N               Coordinator batch size per request (default: 100)" << Qt::endl;
 	out << "  --deep-scan                   Deep scan: scan subdomains/paths after device detection" << Qt::endl;
 	out << "  --vuln-scan                   Scan for known vulnerabilities (CVE database)" << Qt::endl;
 	out << "  --service-version             Detect exact service versions" << Qt::endl;
@@ -285,6 +309,100 @@ int main(int argc, char *argv[])
 					err << "Error: --timeout must be between 1 and 60000 milliseconds" << Qt::endl;
 					return 1;
 				}
+        } else if (strcmp(argv[i], "--port-check") == 0) {
+            if (i + 1 < argc) {
+                const char* eng = argv[++i];
+                if (strcmp(eng, "asio") == 0) {
+                    gUseAsioPortCheck = true;
+                } else if (strcmp(eng, "curl") == 0) {
+                    gUseAsioPortCheck = false;
+                } else {
+                    QTextStream err(stderr);
+                    err << "Error: --port-check must be 'asio' or 'curl'" << Qt::endl;
+                    return 1;
+                }
+            } else {
+                QTextStream err(stderr);
+                err << "Error: --port-check requires an engine (asio|curl)" << Qt::endl;
+                return 1;
+            }
+        } else if (strcmp(argv[i], "--http-engine") == 0) {
+            if (i + 1 < argc) {
+                const char* eng = argv[++i];
+                if (strcmp(eng, "asio") == 0) {
+                    gUseAsioHttp = true; // HTTP only (no HTTPS)
+                } else if (strcmp(eng, "curl") == 0) {
+                    gUseAsioHttp = false;
+                } else {
+                    QTextStream err(stderr);
+                    err << "Error: --http-engine must be 'asio' or 'curl'" << Qt::endl;
+                    return 1;
+                }
+            } else {
+                QTextStream err(stderr);
+                err << "Error: --http-engine requires an engine (asio|curl)" << Qt::endl;
+                return 1;
+            }
+        } else if (strcmp(argv[i], "--asio-threads") == 0) {
+            if (i + 1 < argc) {
+                bool ok;
+                int n = QString(argv[++i]).toInt(&ok);
+                if (!ok || n < 1 || n > 1024) {
+                    QTextStream err(stderr);
+                    err << "Error: --asio-threads must be between 1 and 1024" << Qt::endl;
+                    return 1;
+                }
+                gAsioThreads = n;
+            } else {
+                QTextStream err(stderr);
+                err << "Error: --asio-threads requires a number" << Qt::endl;
+                return 1;
+            }
+        } else if (strcmp(argv[i], "--asio-timeout-ms") == 0) {
+            if (i + 1 < argc) {
+                bool ok;
+                int ms = QString(argv[++i]).toInt(&ok);
+                if (!ok || ms < 10 || ms > 600000) {
+                    QTextStream err(stderr);
+                    err << "Error: --asio-timeout-ms must be between 10 and 600000" << Qt::endl;
+                    return 1;
+                }
+                gAsioTimeoutMs = ms;
+            } else {
+                QTextStream err(stderr);
+                err << "Error: --asio-timeout-ms requires a number (milliseconds)" << Qt::endl;
+                return 1;
+            }
+        } else if (strcmp(argv[i], "--asio-dns-timeout-ms") == 0) {
+            if (i + 1 < argc) {
+                bool ok;
+                int ms = QString(argv[++i]).toInt(&ok);
+                if (!ok || ms < 10 || ms > 600000) {
+                    QTextStream err(stderr);
+                    err << "Error: --asio-dns-timeout-ms must be between 10 and 600000" << Qt::endl;
+                    return 1;
+                }
+                gAsioDnsTimeoutMs = ms;
+            } else {
+                QTextStream err(stderr);
+                err << "Error: --asio-dns-timeout-ms requires a number (milliseconds)" << Qt::endl;
+                return 1;
+            }
+        } else if (strcmp(argv[i], "--asio-connect-timeout-ms") == 0) {
+            if (i + 1 < argc) {
+                bool ok;
+                int ms = QString(argv[++i]).toInt(&ok);
+                if (!ok || ms < 10 || ms > 600000) {
+                    QTextStream err(stderr);
+                    err << "Error: --asio-connect-timeout-ms must be between 10 and 600000" << Qt::endl;
+                    return 1;
+                }
+                gAsioConnectTimeoutMs = ms;
+            } else {
+                QTextStream err(stderr);
+                err << "Error: --asio-connect-timeout-ms requires a number (milliseconds)" << Qt::endl;
+                return 1;
+            }
 				// Convert milliseconds to seconds for curl (round up to at least 1 second)
 				gTimeOut = (timeout + 999) / 1000;
 				if (gTimeOut < 1) gTimeOut = 1;
@@ -542,8 +660,34 @@ int main(int argc, char *argv[])
 		} else if (strcmp(argv[i], "--color") == 0) {
 			useColor = true;
 			InteractiveMode::enableColorOutput(true);
-		} else if (strcmp(argv[i], "--interactive") == 0) {
+        } else if (strcmp(argv[i], "--interactive") == 0) {
 			// Already handled above, skip
+        } else if (strcmp(argv[i], "--dist-mode") == 0) {
+            if (i + 1 < argc) {
+                const char* m = argv[++i];
+                if (strcmp(m, "coordinator") == 0) gDistMode = 1;
+                else if (strcmp(m, "worker") == 0) gDistMode = 2;
+                else gDistMode = 0;
+            }
+        } else if (strcmp(argv[i], "--dist-bind") == 0) {
+            if (i + 1 < argc) {
+                QString s = argv[++i];
+                auto parts = s.split(":");
+                if (parts.size() == 2) {
+                    strncpy(gDistBindHost, parts[0].toLocal8Bit().data(), sizeof(gDistBindHost)-1);
+                    gDistBindPort = parts[1].toInt();
+                }
+            }
+        } else if (strcmp(argv[i], "--dist-coord") == 0) {
+            if (i + 1 < argc) {
+                strncpy(gDistCoordinatorUrl, argv[++i], sizeof(gDistCoordinatorUrl)-1);
+            }
+        } else if (strcmp(argv[i], "--dist-batch") == 0) {
+            if (i + 1 < argc) {
+                bool ok; int n = QString(argv[++i]).toInt(&ok);
+                if (ok && n >= 1 && n <= 10000) gDistBatch = n;
+            }
+        }
 		} else if (strcmp(argv[i], "--quick-camera-scan") == 0 || 
 		           strcmp(argv[i], "--quick-server-scan") == 0 ||
 		           strcmp(argv[i], "--quick-network-scan") == 0 ||
@@ -669,8 +813,182 @@ int main(int argc, char *argv[])
 		out << Qt::endl;
 	}
 	
-	// Initialize stt object only if not in export-only mode
-	if (!exportOnly) {
+    // If in distributed coordinator mode, start server and skip local scanning
+    if (gDistMode == 1) {
+        if (strlen(gDistBindHost) == 0 || gDistBindPort == 0) {
+            QTextStream err(stderr);
+            err << "[ERROR] Coordinator requires --dist-bind HOST:PORT and --import FILE" << Qt::endl;
+            return 1;
+        }
+        if (mode != "import") {
+            QTextStream err(stderr);
+            err << "[ERROR] Coordinator currently supports --import FILE for task source" << Qt::endl;
+            return 1;
+        }
+        // Load import file lines
+        QFile file(target);
+        if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+            QTextStream err(stderr);
+            err << "[ERROR] Cannot open import file: " << target << Qt::endl;
+            return 1;
+        }
+        std::deque<std::string> ips;
+        while (!file.atEnd()) {
+            QByteArray line = file.readLine();
+            QString s = QString::fromUtf8(line).trimmed();
+            if (!s.isEmpty()) ips.push_back(s.toStdString());
+        }
+        file.close();
+
+        DistServer server(gDistBindHost, gDistBindPort);
+        server.loadTasks(ips);
+        server.start();
+
+        QTextStream out(stdout);
+        out << "[INFO] Coordinator started at http://" << gDistBindHost << ":" << gDistBindPort << Qt::endl;
+        out << "[INFO] Endpoints: /health, /task?size=N, /result" << Qt::endl;
+        // Keep running until interrupted
+        while (true) {
+            std::this_thread::sleep_for(std::chrono::seconds(1));
+        }
+        return 0;
+    }
+
+    // Worker mode: pull tasks from coordinator and process in import mode batches
+    if (gDistMode == 2) {
+        if (strlen(gDistCoordinatorUrl) == 0) {
+            QTextStream err(stderr);
+            err << "[ERROR] Worker requires --dist-coord http://host:port" << Qt::endl;
+            return 1;
+        }
+
+        QTextStream out(stdout);
+        out << "[INFO] Worker connecting to coordinator: " << gDistCoordinatorUrl << Qt::endl;
+
+        // Initialize stt once
+        stt = new STh();
+        if (gThreads == 0) gThreads = 100;
+
+        int emptyTries = 0;
+        while (true) {
+            // Build task URL
+            QString taskUrl = QString::fromUtf8(gDistCoordinatorUrl);
+            if (taskUrl.endsWith('/')) taskUrl.chop(1);
+            taskUrl += "/task?size=" + QString::number(gDistBatch);
+
+            // Parse URL into host/port/path
+            std::string url = taskUrl.toStdString();
+            bool https = (url.rfind("https://", 0) == 0);
+            bool http = (url.rfind("http://", 0) == 0);
+            if (!http && !https) {
+                QTextStream err(stderr);
+                err << "[ERROR] Invalid coordinator URL (must start with http:// or https://)" << Qt::endl;
+                return 1;
+            }
+            std::string hostPortPath = url.substr(http ? 7 : 8);
+            std::string host = hostPortPath;
+            std::string path = "/";
+            int port = https ? 443 : 80;
+            auto slashPos = hostPortPath.find('/');
+            if (slashPos != std::string::npos) {
+                host = hostPortPath.substr(0, slashPos);
+                path = hostPortPath.substr(slashPos);
+            }
+            auto colonPos = host.find(':');
+            if (colonPos != std::string::npos) {
+                port = std::atoi(host.substr(colonPos + 1).c_str());
+                host = host.substr(0, colonPos);
+            }
+
+            AsyncHttpClient::Response resp;
+            int overall = (gAsioTimeoutMs > 0) ? gAsioTimeoutMs : (gTimeOut > 0 ? gTimeOut * 1000 : 3000);
+            int dnsTo = (gAsioDnsTimeoutMs > 0) ? gAsioDnsTimeoutMs : overall;
+            int conTo = (gAsioConnectTimeoutMs > 0) ? gAsioConnectTimeoutMs : overall;
+            std::string errMsg;
+            bool ok = AsyncHttpClient::instance().tryGet(host, port, path, https, dnsTo, conTo, overall, &resp, &errMsg);
+
+            if (!ok) {
+                out << "[WARN] Failed to fetch tasks: " << QString::fromStdString(errMsg) << Qt::endl;
+                std::this_thread::sleep_for(std::chrono::seconds(1));
+                continue;
+            }
+
+            if (resp.status == 204 || resp.body.empty()) {
+                if (++emptyTries >= 5) {
+                    out << "[INFO] No tasks from coordinator. Exiting worker." << Qt::endl;
+                    break;
+                }
+                std::this_thread::sleep_for(std::chrono::seconds(1));
+                continue;
+            }
+            emptyTries = 0;
+
+            // Write batch to temp file
+            QString tmpFile = QString(".dist_batch_%1.txt").arg(QDateTime::currentMSecsSinceEpoch());
+            QFile tf(tmpFile);
+            if (!tf.open(QIODevice::WriteOnly | QIODevice::Text)) {
+                QTextStream err(stderr);
+                err << "[ERROR] Cannot create temp batch file" << Qt::endl;
+                return 1;
+            }
+            tf.write(resp.body.c_str(), static_cast<int>(resp.body.size()));
+            tf.close();
+
+            // Capture counters before
+            int foundBefore = found;
+            int savedBefore = saved;
+
+            // Run import scan over the batch
+            stt->setMode(-1);
+            stt->setTarget(tmpFile);
+            ports.replace(" ", "");
+            stt->setPorts(ports);
+            stt->start();
+            stt->wait();
+
+            // Compute deltas and report
+            int foundDelta = found - foundBefore;
+            int savedDelta = saved - savedBefore;
+
+            // Build result URL
+            QString resUrl = QString::fromUtf8(gDistCoordinatorUrl);
+            if (resUrl.endsWith('/')) resUrl.chop(1);
+            resUrl += "/result";
+            std::string rurl = resUrl.toStdString();
+            bool rhttps = (rurl.rfind("https://", 0) == 0);
+            bool rhttp = (rurl.rfind("http://", 0) == 0);
+            std::string rhostPortPath = rurl.substr(rhttp ? 7 : 8);
+            std::string rhost = rhostPortPath;
+            std::string rpath = "/result";
+            int rport = rhttps ? 443 : 80;
+            auto rslashPos = rhostPortPath.find('/');
+            if (rslashPos != std::string::npos) {
+                rhost = rhostPortPath.substr(0, rslashPos);
+                rpath = rhostPortPath.substr(rslashPos);
+            }
+            auto rcolonPos = rhost.find(':');
+            if (rcolonPos != std::string::npos) {
+                rport = std::atoi(rhost.substr(rcolonPos + 1).c_str());
+                rhost = rhost.substr(0, rcolonPos);
+            }
+
+            // Minimal JSON body
+            std::string body = std::string("{\"found\":") + std::to_string(foundDelta) +
+                               ",\"saved\":" + std::to_string(savedDelta) + "}";
+            AsyncHttpClient::Response postResp;
+            std::string postErr;
+            AsyncHttpClient::instance().tryPost(rhost, rport, rpath, rhttps, body, "application/json",
+                dnsTo, conTo, overall, &postResp, &postErr);
+
+            QFile::remove(tmpFile);
+        }
+
+        delete stt; stt = nullptr;
+        return 0;
+    }
+
+    // Initialize stt object only if not in export-only mode
+    if (!exportOnly) {
 		stt = new STh();
 		// Set default threads if not specified
 		if (gThreads == 0) {

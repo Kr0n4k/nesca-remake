@@ -1,5 +1,6 @@
 #include "ScanConfiguration.h"
 #include <QPushButton>
+#include <QLabel>
 
 ScanConfiguration::ScanConfiguration(QWidget *parent)
     : QWidget(parent)
@@ -24,11 +25,22 @@ ScanConfiguration::ScanConfiguration(QWidget *parent)
 void ScanConfiguration::setupUI()
 {
     QVBoxLayout *mainLayout = new QVBoxLayout(this);
-    mainLayout->setSpacing(15);
-    mainLayout->setContentsMargins(20, 20, 20, 20);
+    mainLayout->setSpacing(18);
+    mainLayout->setContentsMargins(25, 25, 25, 25);
+    
+    // Welcome header
+    QLabel *welcomeLabel = new QLabel("Nesca v2r - Network Scanner", this);
+    welcomeLabel->setStyleSheet("font-size: 18px; font-weight: bold; color: #60a5fa; padding-bottom: 10px;");
+    mainLayout->addWidget(welcomeLabel);
+    
+    // Info label
+    QLabel *infoLabel = new QLabel("Configure your scan parameters and click Start Scan", this);
+    infoLabel->setStyleSheet("font-size: 11px; color: #a0a0a0; padding-bottom: 15px;");
+    mainLayout->addWidget(infoLabel);
     
     // Scan mode selection
     QFormLayout *modeLayout = new QFormLayout();
+    modeLayout->setVerticalSpacing(12);
     m_scanModeCombo = new QComboBox(this);
     m_scanModeCombo->addItem("IP Range", "ip");
     m_scanModeCombo->addItem("DNS Scan", "dns");
@@ -39,6 +51,7 @@ void ScanConfiguration::setupUI()
     
     // Target input
     QFormLayout *targetLayout = new QFormLayout();
+    targetLayout->setVerticalSpacing(12);
     m_targetEdit = new QLineEdit(this);
     m_targetEdit->setPlaceholderText("192.168.1.0/24 or 192.168.1.1-192.168.1.255");
     m_targetEdit->setToolTip("Enter target: IP range (CIDR or dash notation), DNS name, or file path for import mode");
@@ -47,6 +60,7 @@ void ScanConfiguration::setupUI()
     
     // Ports
     QFormLayout *portsLayout = new QFormLayout();
+    portsLayout->setVerticalSpacing(12);
     m_portsEdit = new QLineEdit(this);
     m_portsEdit->setText("80,81,88,8080,8081,60001,60002,8008,8888,554,9000,3536,21");
     m_portsEdit->setPlaceholderText("80,443,8080");
@@ -56,6 +70,7 @@ void ScanConfiguration::setupUI()
     
     // Threads
     QFormLayout *threadsLayout = new QFormLayout();
+    threadsLayout->setVerticalSpacing(12);
     m_threadsSpin = new QSpinBox(this);
     m_threadsSpin->setRange(1, 2000);
     m_threadsSpin->setValue(100);
@@ -64,8 +79,9 @@ void ScanConfiguration::setupUI()
     mainLayout->addLayout(threadsLayout);
     
     // Advanced options group
-    m_advancedGroup = new QGroupBox("Advanced Options", this);
+    m_advancedGroup = new QGroupBox("⚙ Advanced Options", this);
     QFormLayout *advancedLayout = new QFormLayout();
+    advancedLayout->setVerticalSpacing(10);
     
     m_timeoutSpin = new QSpinBox(this);
     m_timeoutSpin->setRange(1, 60000);
@@ -90,8 +106,9 @@ void ScanConfiguration::setupUI()
     mainLayout->addWidget(m_advancedGroup);
     
     // Export group
-    m_exportGroup = new QGroupBox("Export Options", this);
+    m_exportGroup = new QGroupBox("📊 Export Options", this);
     QFormLayout *exportLayout = new QFormLayout();
+    exportLayout->setVerticalSpacing(10);
     
     m_exportFormatCombo = new QComboBox(this);
     m_exportFormatCombo->addItem("JSON", "json");
@@ -104,18 +121,38 @@ void ScanConfiguration::setupUI()
     m_exportGroup->setLayout(exportLayout);
     mainLayout->addWidget(m_exportGroup);
     
-    // Buttons
+    // Buttons with enhanced styling
     QHBoxLayout *buttonLayout = new QHBoxLayout();
-    m_startButton = new QPushButton("Start Scan", this);
-    m_stopButton = new QPushButton("Stop Scan", this);
-    m_stopButton->setEnabled(false);
+    buttonLayout->setSpacing(12);
     
+    m_startButton = new QPushButton("▶ Start Scan", this);
+    m_startButton->setStyleSheet(
+        "QPushButton { background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1, "
+        "stop: 0 #60a5fa, stop: 1 #4d8fef); color: white; font-weight: bold; padding: 12px 24px; }"
+        "QPushButton:hover { background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1, "
+        "stop: 0 #70b0ff, stop: 1 #5d9fff); }"
+        "QPushButton:pressed { background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1, "
+        "stop: 0 #5080e0, stop: 1 #4080df); }"
+    );
+    
+    m_stopButton = new QPushButton("⏹ Stop Scan", this);
+    m_stopButton->setEnabled(false);
+    m_stopButton->setStyleSheet(
+        "QPushButton { background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1, "
+        "stop: 0 #ef4444, stop: 1 #dc2626); color: white; font-weight: bold; padding: 12px 24px; }"
+        "QPushButton:hover { background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1, "
+        "stop: 0 #ff5555, stop: 1 #ec3535); }"
+        "QPushButton:pressed { background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1, "
+        "stop: 0 #dd3333, stop: 1 #cc2424); }"
+        "QPushButton:disabled { background: #2a2a2f; color: #7f7f7f; }"
+    );
+    
+    buttonLayout->addStretch();
     buttonLayout->addWidget(m_startButton);
     buttonLayout->addWidget(m_stopButton);
-    buttonLayout->addStretch();
     
-    mainLayout->addLayout(buttonLayout);
     mainLayout->addStretch();
+    mainLayout->addLayout(buttonLayout);
     
     // Connect signals
     connect(m_startButton, &QPushButton::clicked, this, &ScanConfiguration::onStartScan);
