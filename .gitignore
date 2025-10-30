@@ -52,6 +52,14 @@ debugData.txt
 tempIPLst.bk
 restore
 
+# Additional scan/export artifacts
+# Single-file results created by runs (e.g., results__test_*.txt)
+results__*
+results__*.txt
+# Exports with double underscore naming
+export__*.json
+export__*.csv
+
 # Test files
 test_*.txt
 test_*.cpp
