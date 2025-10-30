@@ -47,13 +47,13 @@ extern int found, indexIP, gMode,
     ssh, globalPinger, gPingTimeout,
 	cIndex, gMaxRate, gRetries, gBatchSize;
 extern unsigned int Activity;
-extern bool gVerifySSL, gAdaptiveScan, gSmartScan, gDeepScan, gVulnScan, gServiceVersion, gHttp2Enabled, gWebSocketEnabled, gQuicEnabled, gShodanEnabled;
+extern bool gVerifySSL, gAdaptiveScan, gSmartScan, gDeepScan, gVulnScan, gServiceVersion, gHttp2Enabled, gWebSocketEnabled, gQuicEnabled, gShodanEnabled, gCensysEnabled;
 extern char trcSrv[256], trcScr[256], trcProxy[128], trcPersKey[64],
     trcPort[32], trcSrvPortLine[32],
     gTLD[128], gPorts[1024],
     gProxyIP[64], gProxyPort[8],
     currentIP[MAX_ADDR_LEN],
-    finalIP[32], gUserAgent[256], gShodanApiKey[256];
+    finalIP[32], gUserAgent[256], gShodanApiKey[256], gCensysApiId[256], gCensysApiSecret[256];
 
 extern char gVER[32];
 

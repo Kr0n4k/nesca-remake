@@ -67,7 +67,8 @@ SOURCES += src/auth/BasicAuth.cpp \
            src/auth/WebformWorker.cpp \
            src/auth/WebSocketAuth.cpp \
            src/auth/QuicAuth.cpp \
-           src/auth/ShodanAuth.cpp
+           src/auth/ShodanAuth.cpp \
+           src/auth/CensysAuth.cpp
 
 HEADERS += src/auth/BasicAuth.h \
            src/auth/FTPAuth.h \
@@ -78,7 +79,8 @@ HEADERS += src/auth/BasicAuth.h \
            src/auth/WebformWorker.h \
            src/auth/WebSocketAuth.h \
            src/auth/QuicAuth.h \
-           src/auth/ShodanAuth.h
+           src/auth/ShodanAuth.h \
+           src/auth/CensysAuth.h
 
 # Exporters
 SOURCES += src/exporters/ResultExporter.cpp

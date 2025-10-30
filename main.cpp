@@ -24,6 +24,7 @@
 #include <DeviceIdentifier.h>
 #include <InteractiveMode.h>
 #include <ShodanAuth.h>
+#include <CensysAuth.h>
 
 // Signal handler for graceful shutdown in monitor mode
 volatile bool gSignalReceived = false;
@@ -69,6 +70,14 @@ void printUsage(const char* progName) {
 	out << "  --shodan-host IP             Get Shodan information for specific IP" << Qt::endl;
 	out << "  --shodan-port PORT           Search Shodan for specific port" << Qt::endl;
 	out << "  --shodan-count QUERY         Count results for Shodan query" << Qt::endl;
+	out << "  --censys-api-id ID           Censys API ID for integration" << Qt::endl;
+	out << "  --censys-api-secret SECRET   Censys API Secret for integration" << Qt::endl;
+	out << "  --censys-query QUERY         Search Censys with query" << Qt::endl;
+	out << "  --censys-host IP             Get Censys information for specific IP" << Qt::endl;
+	out << "  --censys-port PORT           Search Censys for specific port" << Qt::endl;
+	out << "  --censys-cameras             Search Censys for cameras" << Qt::endl;
+	out << "  --censys-servers             Search Censys for servers" << Qt::endl;
+	out << "  --censys-iot                 Search Censys for IoT devices" << Qt::endl;
 	out << "  --user-agent STRING          Custom User-Agent string" << Qt::endl;
 	out << "  --adaptive                   Enable adaptive thread adjustment based on network load" << Qt::endl;
 	out << "  --smart-scan                 Prioritize popular ports for found IPs" << Qt::endl;
@@ -360,6 +369,55 @@ int main(int argc, char *argv[])
 				char* query = argv[++i];
 				cliArgs["shodan_count"] = QString::fromUtf8(query);
 				gShodanEnabled = true;
+			}
+		} else if (strcmp(argv[i], "--censys-api-id") == 0) {
+			if (i + 1 < argc) {
+				strncpy(gCensysApiId, argv[++i], sizeof(gCensysApiId) - 1);
+				gCensysApiId[sizeof(gCensysApiId) - 1] = '\0';
+				if (strlen(gCensysApiSecret) > 0) {
+					gCensysEnabled = true;
+				}
+			}
+		} else if (strcmp(argv[i], "--censys-api-secret") == 0) {
+			if (i + 1 < argc) {
+				strncpy(gCensysApiSecret, argv[++i], sizeof(gCensysApiSecret) - 1);
+				gCensysApiSecret[sizeof(gCensysApiSecret) - 1] = '\0';
+				if (strlen(gCensysApiId) > 0) {
+					gCensysEnabled = true;
+				}
+			}
+		} else if (strcmp(argv[i], "--censys-query") == 0) {
+			if (i + 1 < argc && strlen(gCensysApiId) > 0 && strlen(gCensysApiSecret) > 0) {
+				char* query = argv[++i];
+				cliArgs["censys_query"] = QString::fromStdString(query);
+				gCensysEnabled = true;
+			}
+		} else if (strcmp(argv[i], "--censys-host") == 0) {
+			if (i + 1 < argc && strlen(gCensysApiId) > 0 && strlen(gCensysApiSecret) > 0) {
+				char* ip = argv[++i];
+				cliArgs["censys_host"] = QString::fromUtf8(ip);
+				gCensysEnabled = true;
+			}
+		} else if (strcmp(argv[i], "--censys-port") == 0) {
+			if (i + 1 < argc && strlen(gCensysApiId) > 0 && strlen(gCensysApiSecret) > 0) {
+				char* port = argv[++i];
+				cliArgs["censys_port"] = QString::fromUtf8(port);
+				gCensysEnabled = true;
+			}
+		} else if (strcmp(argv[i], "--censys-cameras") == 0) {
+			if (strlen(gCensysApiId) > 0 && strlen(gCensysApiSecret) > 0) {
+				cliArgs["censys_query"] = QString::fromStdString(CensysAuth::buildCameraQuery());
+				gCensysEnabled = true;
+			}
+		} else if (strcmp(argv[i], "--censys-servers") == 0) {
+			if (strlen(gCensysApiId) > 0 && strlen(gCensysApiSecret) > 0) {
+				cliArgs["censys_query"] = QString::fromStdString(CensysAuth::buildServerQuery());
+				gCensysEnabled = true;
+			}
+		} else if (strcmp(argv[i], "--censys-iot") == 0) {
+			if (strlen(gCensysApiId) > 0 && strlen(gCensysApiSecret) > 0) {
+				cliArgs["censys_query"] = QString::fromStdString(CensysAuth::buildIoTQuery());
+				gCensysEnabled = true;
 			}
 		} else if (strcmp(argv[i], "--adaptive") == 0) {
 			gAdaptiveScan = true;
@@ -891,6 +949,93 @@ int main(int argc, char *argv[])
 			// If only Shodan queries were requested, exit
 			if (cliArgs.contains("shodan_query") || cliArgs.contains("shodan_host") || 
 			    cliArgs.contains("shodan_port") || cliArgs.contains("shodan_count")) {
+				out << Qt::endl;
+				return 0;
+			}
+		}
+	}
+	
+	// Handle Censys API queries before scanning
+	if (gCensysEnabled && strlen(gCensysApiId) > 0 && strlen(gCensysApiSecret) > 0) {
+		QTextStream out(stdout);
+		out << Qt::endl << "[INFO] Censys API integration enabled" << Qt::endl;
+		
+		// Test API credentials
+		if (!CensysAuth::testApiKey(gCensysApiId, gCensysApiSecret)) {
+			out << "[WARN] Censys API credential validation failed. Please check your API ID and Secret." << Qt::endl;
+		} else {
+			out << "[OK] Censys API credentials validated" << Qt::endl;
+			
+			// Handle Censys query
+			if (cliArgs.contains("censys_query")) {
+				QString query = cliArgs["censys_query"];
+				out << "[INFO] Searching Censys for: " << query << Qt::endl;
+				
+				CensysSearchResult result = CensysAuth::searchHosts(
+					gCensysApiId,
+					gCensysApiSecret,
+					query.toStdString().c_str(),
+					1,
+					100
+				);
+				
+				if (result.success) {
+					out << "[OK] Found " << result.total << " results" << Qt::endl;
+					out << "[INFO] Showing first " << result.matches.size() << " matches:" << Qt::endl;
+					
+					for (size_t i = 0; i < result.matches.size() && i < 10; ++i) {
+						const CensysHost& host = result.matches[i];
+						out << "  [" << (i + 1) << "] " << QString::fromStdString(host.ip);
+						if (host.port > 0) {
+							out << ":" << host.port;
+						}
+						if (!host.service.empty()) {
+							out << " (" << QString::fromStdString(host.service) << ")";
+						}
+						if (!host.country.empty()) {
+							out << " [" << QString::fromStdString(host.country) << "]";
+						}
+						out << Qt::endl;
+					}
+					
+					if (result.total > (int)result.matches.size()) {
+						out << "[INFO] Use Censys web interface for full results" << Qt::endl;
+					}
+				} else {
+					out << "[ERROR] Censys query failed: " << QString::fromStdString(result.error) << Qt::endl;
+				}
+			}
+			
+			// Handle Censys port search
+			if (cliArgs.contains("censys_port")) {
+				QString port = cliArgs["censys_port"];
+				out << "[INFO] Searching Censys for port: " << port << Qt::endl;
+				
+				CensysSearchResult result = CensysAuth::searchPort(
+					gCensysApiId,
+					gCensysApiSecret,
+					port.toStdString().c_str(),
+					"",
+					1
+				);
+				
+				if (result.success) {
+					out << "[OK] Found " << result.total << " hosts with port " << port << Qt::endl;
+					for (size_t i = 0; i < result.matches.size() && i < 10; ++i) {
+						const CensysHost& host = result.matches[i];
+						out << "  [" << (i + 1) << "] " << QString::fromStdString(host.ip);
+						if (!host.country.empty()) {
+							out << " (" << QString::fromStdString(host.country) << ")";
+						}
+						out << Qt::endl;
+					}
+				} else {
+					out << "[ERROR] Censys port search failed: " << QString::fromStdString(result.error) << Qt::endl;
+				}
+			}
+			
+			// If only Censys queries were requested, exit
+			if (cliArgs.contains("censys_query") || cliArgs.contains("censys_port")) {
 				out << Qt::endl;
 				return 0;
 			}

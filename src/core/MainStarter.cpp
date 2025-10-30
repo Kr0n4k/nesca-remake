@@ -34,6 +34,9 @@ bool gWebSocketEnabled = true;  // WebSocket scanning enabled by default
 bool gQuicEnabled = true;  // QUIC protocol scanning enabled by default
 bool gShodanEnabled = false;  // Shodan API integration disabled by default
 char gShodanApiKey[256] = {0};  // Shodan API key
+bool gCensysEnabled = false;  // Censys API integration disabled by default
+char gCensysApiId[256] = {0};  // Censys API ID
+char gCensysApiSecret[256] = {0};  // Censys API Secret
 int gMode;
 int PieCamerasC1 = 0, PieBA = 0, PieOther = 0, PieSSH = 0;
 int camerasC1 = 0, filtered = 0, Overl = 0, Alive = 0, saved = 0, other = 0, ssh = 0;
