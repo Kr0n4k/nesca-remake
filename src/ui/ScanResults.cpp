@@ -2,6 +2,7 @@
 #include <QHeaderView>
 #include <QFileDialog>
 #include <QMessageBox>
+#include <QLabel>
 
 ScanResults::ScanResults(QWidget *parent)
     : QWidget(parent)
@@ -23,6 +24,23 @@ ScanResults::ScanResults(QWidget *parent)
 void ScanResults::setupUI()
 {
     QVBoxLayout *mainLayout = new QVBoxLayout(this);
+    
+    // Results info banner
+    QLabel *resultsInfo = new QLabel(
+        "📋 <b>Results Table:</b> Double-click any row to view detailed information | "
+        "<b>Export:</b> Save results to JSON/CSV | <b>Clear:</b> Remove all results",
+        this
+    );
+    resultsInfo->setStyleSheet(
+        "background: qlineargradient(x1: 0, y1: 0, x2: 1, y2: 0, stop: 0 #1a3a5a, stop: 1 #2a4a6a);"
+        "color: #a0d0ff;"
+        "padding: 8px;"
+        "border-radius: 5px;"
+        "margin-bottom: 8px;"
+        "font-size: 11px;"
+    );
+    resultsInfo->setWordWrap(true);
+    mainLayout->addWidget(resultsInfo);
     
     // Create splitter
     m_splitter = new QSplitter(Qt::Horizontal, this);

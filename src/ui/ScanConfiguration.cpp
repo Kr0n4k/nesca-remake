@@ -38,6 +38,19 @@ void ScanConfiguration::setupUI()
     infoLabel->setStyleSheet("font-size: 11px; color: #a0a0a0; padding-bottom: 15px;");
     mainLayout->addWidget(infoLabel);
     
+    // Quick guide hint
+    QLabel *guideHint = new QLabel("💡 <b>New to scanning?</b> Hover over any field for detailed help", this);
+    guideHint->setStyleSheet(
+        "background: qlineargradient(x1: 0, y1: 0, x2: 1, y2: 0, stop: 0 #2a5a80, stop: 1 #1a3a5a);"
+        "color: #a0d0ff;"
+        "padding: 10px;"
+        "border-radius: 6px;"
+        "margin-bottom: 10px;"
+        "font-size: 12px;"
+    );
+    guideHint->setWordWrap(true);
+    mainLayout->addWidget(guideHint);
+    
     // Scan mode selection
     QFormLayout *modeLayout = new QFormLayout();
     modeLayout->setVerticalSpacing(12);
@@ -45,8 +58,17 @@ void ScanConfiguration::setupUI()
     m_scanModeCombo->addItem("IP Range", "ip");
     m_scanModeCombo->addItem("DNS Scan", "dns");
     m_scanModeCombo->addItem("Import from File", "import");
-    m_scanModeCombo->setToolTip("Select scanning mode: IP Range (192.168.1.0/24), DNS Scan (example.com), or Import from file");
+    m_scanModeCombo->setToolTip(
+        "<b>How do I choose the scan mode?</b><br>"
+        "• <b>IP Range</b>: Scan a range of IP addresses (e.g., 192.168.1.0/24)<br>"
+        "• <b>DNS Scan</b>: Scan a domain name or hostname<br>"
+        "• <b>Import from File</b>: Load IPs from a text file"
+    );
+    
+    QLabel *modeHelp = new QLabel("ℹ️ Choose how you want to specify targets", this);
+    modeHelp->setStyleSheet("font-size: 10px; color: #888; font-style: italic;");
     modeLayout->addRow("Scan Mode:", m_scanModeCombo);
+    modeLayout->addRow("", modeHelp);
     mainLayout->addLayout(modeLayout);
     
     // Target input
@@ -54,8 +76,23 @@ void ScanConfiguration::setupUI()
     targetLayout->setVerticalSpacing(12);
     m_targetEdit = new QLineEdit(this);
     m_targetEdit->setPlaceholderText("192.168.1.0/24 or 192.168.1.1-192.168.1.255");
-    m_targetEdit->setToolTip("Enter target: IP range (CIDR or dash notation), DNS name, or file path for import mode");
+    m_targetEdit->setToolTip(
+        "<b>Examples for Target field:</b><br>"
+        "<b>CIDR notation:</b><br>"
+        "• 192.168.1.0/24 (scans 192.168.1.1-254)<br>"
+        "• 10.0.0.0/16 (scans 10.0.x.x - 65536 hosts)<br><br>"
+        "<b>Range notation:</b><br>"
+        "• 192.168.1.1-192.168.1.100<br>"
+        "• 192.168.1.1-254<br><br>"
+        "<b>Single IP:</b> 192.168.1.1<br>"
+        "<b>DNS:</b> example.com<br>"
+        "<b>File:</b> /path/to/ips.txt (one IP per line)"
+    );
+    
+    QLabel *targetHelp = new QLabel("ℹ️ Use CIDR (/24) or range (192.168.1.1-255) notation", this);
+    targetHelp->setStyleSheet("font-size: 10px; color: #888; font-style: italic;");
     targetLayout->addRow("Target:", m_targetEdit);
+    targetLayout->addRow("", targetHelp);
     mainLayout->addLayout(targetLayout);
     
     // Ports
@@ -64,8 +101,20 @@ void ScanConfiguration::setupUI()
     m_portsEdit = new QLineEdit(this);
     m_portsEdit->setText("80,81,88,8080,8081,60001,60002,8008,8888,554,9000,3536,21");
     m_portsEdit->setPlaceholderText("80,443,8080");
-    m_portsEdit->setToolTip("Comma-separated list of ports to scan. Common ports: 80 (HTTP), 443 (HTTPS), 8080 (HTTP-alt), 554 (RTSP), 21 (FTP), 22 (SSH)");
+    m_portsEdit->setToolTip(
+        "<b>Common ports to scan:</b><br>"
+        "<b>Web:</b> 80 (HTTP), 443 (HTTPS), 8080, 8000, 8443<br>"
+        "<b>Streaming:</b> 554 (RTSP), 1935 (RTMP), 9000<br>"
+        "<b>Cameras:</b> 37777, 34567, 8000, 88<br>"
+        "<b>Other:</b> 21 (FTP), 22 (SSH), 23 (Telnet), 3389 (RDP)<br><br>"
+        "<b>Format:</b> Separate with commas (80,443,8080)<br>"
+        "Or use ranges: 80-100 or 8000-8100"
+    );
+    
+    QLabel *portsHelp = new QLabel("ℹ️ Separate ports with commas. Default: common web & camera ports", this);
+    portsHelp->setStyleSheet("font-size: 10px; color: #888; font-style: italic;");
     portsLayout->addRow("Ports:", m_portsEdit);
+    portsLayout->addRow("", portsHelp);
     mainLayout->addLayout(portsLayout);
     
     // Threads
@@ -74,8 +123,20 @@ void ScanConfiguration::setupUI()
     m_threadsSpin = new QSpinBox(this);
     m_threadsSpin->setRange(1, 2000);
     m_threadsSpin->setValue(100);
-    m_threadsSpin->setToolTip("Number of parallel threads. Higher values = faster scan but more resources. Default: 100");
+    m_threadsSpin->setToolTip(
+        "<b>What are threads?</b><br>"
+        "Threads control how many connections happen at once.<br><br>"
+        "<b>Recommended values:</b><br>"
+        "• 50-100: Safe, normal usage<br>"
+        "• 100-200: Faster, moderate network<br>"
+        "• 200+: Very fast, stable network only<br><br>"
+        "<b>Higher = faster</b> but uses more CPU/network. Default: 100"
+    );
+    
+    QLabel *threadsHelp = new QLabel("ℹ️ More threads = faster scan. Recommended: 100", this);
+    threadsHelp->setStyleSheet("font-size: 10px; color: #888; font-style: italic;");
     threadsLayout->addRow("Threads:", m_threadsSpin);
+    threadsLayout->addRow("", threadsHelp);
     mainLayout->addLayout(threadsLayout);
     
     // Advanced options group
@@ -87,19 +148,51 @@ void ScanConfiguration::setupUI()
     m_timeoutSpin->setRange(1, 60000);
     m_timeoutSpin->setValue(3000);
     m_timeoutSpin->setSuffix(" ms");
-    m_timeoutSpin->setToolTip("Connection timeout in milliseconds. Increase for slow networks. Default: 3000ms");
+    m_timeoutSpin->setToolTip(
+        "<b>Connection Timeout:</b><br>"
+        "How long to wait for a response before giving up.<br><br>"
+        "<b>Recommended:</b><br>"
+        "• 1000-3000ms: Fast networks (default)<br>"
+        "• 5000ms: Slower/remote networks<br>"
+        "• 10000ms+: Very slow or unreliable networks<br><br>"
+        "Too low = false negatives. Too high = slow scanning."
+    );
     advancedLayout->addRow("Timeout:", m_timeoutSpin);
     
     m_verifySSLCheck = new QCheckBox("Verify SSL certificates", this);
-    m_verifySSLCheck->setToolTip("Enable SSL certificate verification (more secure but may reject self-signed certs)");
+    m_verifySSLCheck->setToolTip(
+        "<b>SSL Certificate Verification:</b><br>"
+        "Check if SSL certificates are valid and trusted.<br><br>"
+        "<b>Checked:</b> Only accept valid certificates (more secure)<br>"
+        "<b>Unchecked:</b> Accept any certificate, even self-signed<br><br>"
+        "<b>Tip:</b> Uncheck if scanning IoT devices or cameras with self-signed certs"
+    );
     advancedLayout->addRow("", m_verifySSLCheck);
     
     m_adaptiveCheck = new QCheckBox("Adaptive scan", this);
-    m_adaptiveCheck->setToolTip("Automatically adjust thread count based on network load and performance");
+    m_adaptiveCheck->setToolTip(
+        "<b>Adaptive Scanning:</b><br>"
+        "Automatically adjust thread count based on network performance.<br><br>"
+        "<b>How it works:</b><br>"
+        "• Starts with your set thread count<br>"
+        "• Monitors network latency and errors<br>"
+        "• Increases threads if network is stable<br>"
+        "• Decreases if too many timeouts occur<br><br>"
+        "<b>Best for:</b> Large scans on varying network conditions"
+    );
     advancedLayout->addRow("", m_adaptiveCheck);
     
     m_smartScanCheck = new QCheckBox("Smart scan", this);
-    m_smartScanCheck->setToolTip("Prioritize popular ports for found IPs to speed up the scan");
+    m_smartScanCheck->setToolTip(
+        "<b>Smart Scanning:</b><br>"
+        "Prioritize common ports to scan faster.<br><br>"
+        "<b>How it works:</b><br>"
+        "• First scans most likely ports (80, 443, etc.)<br>"
+        "• After finding open ports, focuses on their protocols<br>"
+        "• Skips unlikely combinations<br><br>"
+        "<b>Effect:</b> Faster results, fewer false positives<br>"
+        "<b>Good for:</b> Quick reconnaissance"
+    );
     advancedLayout->addRow("", m_smartScanCheck);
     
     m_advancedGroup->setLayout(advancedLayout);
@@ -115,8 +208,19 @@ void ScanConfiguration::setupUI()
     m_exportFormatCombo->addItem("CSV", "csv");
     m_exportFormatCombo->addItem("Both", "both");
     m_exportFormatCombo->setCurrentIndex(0);
-    m_exportFormatCombo->setToolTip("Export format for results: JSON (structured data), CSV (spreadsheet), or Both");
+    m_exportFormatCombo->setToolTip(
+        "<b>Export Format:</b><br>"
+        "Choose how scan results are saved.<br><br>"
+        "<b>JSON:</b> Structured data format, easy for scripts<br>"
+        "<b>CSV:</b> Spreadsheet format (Excel, Google Sheets)<br>"
+        "<b>Both:</b> Save in both formats<br><br>"
+        "<b>Recommendation:</b> JSON for developers, CSV for users"
+    );
+    
+    QLabel *exportHelp = new QLabel("ℹ️ Results will be saved in your chosen format", this);
+    exportHelp->setStyleSheet("font-size: 10px; color: #888; font-style: italic;");
     exportLayout->addRow("Export Format:", m_exportFormatCombo);
+    exportLayout->addRow("", exportHelp);
     
     m_exportGroup->setLayout(exportLayout);
     mainLayout->addWidget(m_exportGroup);
