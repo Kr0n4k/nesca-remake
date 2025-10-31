@@ -15,9 +15,8 @@ exists($$[QT_INSTALL_LIBS]/libQt5Core5Compat.so) {
 
 # Removed gui, multimedia, widgets for console-only application
 
-CONFIG += c++11
 QMAKE_CFLAGS += -Wno-write-strings -g
-QMAKE_CXXFLAGS += -Wno-write-strings -Wno-narrowing -fpermissive -g
+QMAKE_CXXFLAGS += -std=c++23 -Wno-write-strings -Wno-narrowing -fpermissive -g
 
 TARGET = nesca
 TEMPLATE = app

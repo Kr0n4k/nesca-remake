@@ -9,6 +9,7 @@
 #include <mutex>
 #include <atomic>
 #include <thread>
+#include <AsyncConnector.h> // For Boost.Asio port check
 // #include "Filter.h" // Pantene: Где файл?
 
 //#if defined(WIN32) || defined(_WIN32) || defined(__WIN32) && !defined(__CYGWIN__)
@@ -798,6 +799,18 @@ bool portCheck(const char * sDVRIP, int wDVRPort) {
 	// Enforce rate limiting
 	enforceRateLimit();
 	
+	// Choose between Async (Boost.Asio) and curl based on flag
+	if (gUseAsioPortCheck) {
+		int effectiveTimeout = (gAsioTimeoutMs > 0) ? gAsioTimeoutMs : (gTimeOut * 1000);
+		bool success = AsyncConnector::instance().tryConnect(sDVRIP, wDVRPort, effectiveTimeout);
+		if (success && gNegDebugMode) {
+			stt->doEmitionDebugFoundData("Port check succeeded (asio) [<a href=\"" + QString(sDVRIP) +
+				"/\"><font color=\"#0084ff\">" + QString(sDVRIP) + "</font></a>]");
+		}
+		return success;
+	}
+	
+	// Fallback to curl
 	CURL *curl = curl_easy_init();
 	if (curl != NULL) {
 		curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L);

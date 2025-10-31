@@ -42,10 +42,10 @@ std::string DistServer::nextBatch(size_t n) {
 
 void DistServer::run() {
     boost::asio::io_context ioc;
-    tcp::acceptor acceptor{ioc, tcp::endpoint(boost::asio::ip::make_address(host_), static_cast<unsigned short>(port_))};
+    tcp::acceptor acceptor{ioc.get_executor(), tcp::endpoint(boost::asio::ip::make_address(host_), static_cast<unsigned short>(port_))};
 
     while (running_) {
-        tcp::socket socket{ioc};
+        tcp::socket socket{ioc.get_executor()};
         boost::system::error_code ec;
         acceptor.accept(socket, ec);
         if (ec) continue;

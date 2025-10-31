@@ -15,9 +15,8 @@ exists($$[QT_INSTALL_LIBS]/libQt5Core5Compat.so) {
 
 # Removed gui, multimedia, widgets for console-only application
 
-CONFIG += c++11
 QMAKE_CFLAGS += -Wno-write-strings -g
-QMAKE_CXXFLAGS += -Wno-write-strings -Wno-narrowing -fpermissive -g
+QMAKE_CXXFLAGS += -std=c++17 -Wno-write-strings -Wno-narrowing -fpermissive -g
 
 TARGET = nesca
 TEMPLATE = app
@@ -29,7 +28,8 @@ INCLUDEPATH += $$PWD/src/common \
                $$PWD/src/auth \
                $$PWD/src/exporters \
                $$PWD/src/network \
-               $$PWD/src/ui
+               $$PWD/src/ui \
+               /usr/include
 
 # Common headers (shared across modules)
 HEADERS += src/common/externData.h \
@@ -103,9 +103,10 @@ SOURCES += src/network/Connector.cpp \
            src/detectors/DeepScanner.cpp \
            src/detectors/VulnerabilityScanner.cpp \
            src/detectors/ServiceVersionDetector.cpp \
-           src/network/AsyncConnector.cpp \
-           src/network/AsyncHttpClient.cpp
-           src/network/DistServer.cpp
+           src/network/AsyncConnector.cpp
+# Boost 1.89+ incompatible
+#           src/network/AsyncHttpClient.cpp \
+#           src/network/DistServer.cpp
 
 HEADERS += src/network/Connector.h \
            src/network/Utils.h \
@@ -122,9 +123,10 @@ HEADERS += src/network/Connector.h \
            src/detectors/DeepScanner.h \
            src/detectors/VulnerabilityScanner.h \
            src/detectors/ServiceVersionDetector.h \
-           src/network/AsyncConnector.h \
-           src/network/AsyncHttpClient.h
-           src/network/DistServer.h
+           src/network/AsyncConnector.h
+# Boost 1.89+ incompatible
+#           src/network/AsyncHttpClient.h \
+#           src/network/DistServer.h
 
 # UI components (optional, for GUI build)
 # Uncomment for GUI version:
@@ -169,6 +171,7 @@ unix|win32: LIBS += -lssl
 unix|win32: LIBS += -lcurl
 unix|win32: LIBS += -lnghttp2
 unix|win32: LIBS += -lm
-unix|win32: LIBS += -lboost_system
+# Boost 1.89 is header-only for asio/beast
+# unix|win32: LIBS += -lboost_system
 win32: LIBS += -lws2_32
 

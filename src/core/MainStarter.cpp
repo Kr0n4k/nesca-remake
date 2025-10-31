@@ -6,6 +6,7 @@
 #include <functional>
 #include <QTextStream>
 #include <QString>
+#include <QDir>
 #include <chrono>
 #include <mutex>
 #include <cstring>
@@ -1854,9 +1855,15 @@ void MainStarter::createResultFiles() {
 	}
 #else
 	struct stat str;
-	if (stat(fileName, &str) == -1) {
-		mkdir(fileName, 0700);
+	if (stat(fileName, &str) == 0) {
+		// Directory exists - remove it to avoid duplicates
+		QString dirPath = QString(fileName);
+		QDir dir(dirPath);
+		if (dir.exists()) {
+			dir.removeRecursively();
+		}
 	}
+	mkdir(fileName, 0700);
 #endif
 }
 

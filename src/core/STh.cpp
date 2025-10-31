@@ -94,6 +94,7 @@ QString getCurlErrorString(int curlCode) {
 		case 18: return "Partial file transfer";
 		case 28: return "Operation timeout";
 		case 35: return "SSL connect error";
+		case 47: return "Too many redirects";  // Not really an error for scanning
 		case 52: return "Empty server response";
 		case 56: return "Receive error";
 		case 67: return "Login denied";
@@ -321,6 +322,9 @@ void STh::doEmitionRedFoundData(QString str)
 		int curlCode = match.captured(1).toInt();
 		QString url = match.captured(2).trimmed();
 		QString errorDesc = getCurlErrorString(curlCode);
+		
+		// Skip common non-critical errors (redirects are normal for scanning)
+		if (curlCode == 47) return;
 		
 		// Format: [ERROR] CURL: <description> (<code>) <url>
 		err << ANSI_RED << "[ERROR]" << ANSI_RESET << " CURL: " << ANSI_YELLOW << errorDesc 

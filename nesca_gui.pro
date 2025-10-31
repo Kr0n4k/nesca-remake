@@ -12,9 +12,8 @@ exists($$[QT_INSTALL_LIBS]/libQt5Core5Compat.so) {
     QT += core5compat
 }
 
-CONFIG += c++14
 QMAKE_CFLAGS += -Wno-write-strings -g
-QMAKE_CXXFLAGS += -Wno-write-strings -Wno-narrowing -fpermissive -g
+QMAKE_CXXFLAGS += -std=c++17 -Wno-write-strings -Wno-narrowing -fpermissive -g
 
 TARGET = nesca-gui
 TEMPLATE = app

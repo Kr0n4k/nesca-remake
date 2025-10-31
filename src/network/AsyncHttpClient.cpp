@@ -18,7 +18,7 @@ AsyncHttpClient &AsyncHttpClient::instance() {
 }
 
 AsyncHttpClient::AsyncHttpClient()
-    : workGuard_(std::make_unique<boost::asio::executor_work_guard<boost::asio::io_context::executor_type>>(ioContext_.get_executor())) {
+    : workGuard_(std::make_unique<boost::asio::executor_work_guard<boost::asio::io_context::executor_type>>(boost::asio::make_work_guard(ioContext_))) {
     ensureThreads();
 }
 
@@ -50,11 +50,11 @@ void AsyncHttpClient::asyncGet(const std::string &host,
                                const HttpCallback &cb) {
     ensureThreads();
 
-    auto resolver = std::make_shared<tcp::resolver>(ioContext_);
-    auto socket   = std::make_shared<tcp::socket>(ioContext_);
-    auto timerDns = std::make_shared<boost::asio::steady_timer>(ioContext_);
-    auto timerConn = std::make_shared<boost::asio::steady_timer>(ioContext_);
-    auto timerAll = std::make_shared<boost::asio::steady_timer>(ioContext_);
+    auto resolver = std::make_shared<tcp::resolver>(ioContext_.get_executor());
+    auto socket   = std::make_shared<tcp::socket>(ioContext_.get_executor());
+    auto timerDns = std::make_shared<boost::asio::steady_timer>(ioContext_.get_executor());
+    auto timerConn = std::make_shared<boost::asio::steady_timer>(ioContext_.get_executor());
+    auto timerAll = std::make_shared<boost::asio::steady_timer>(ioContext_.get_executor());
     auto cbWrap   = std::make_shared<HttpCallback>(cb);
     auto completed= std::make_shared<bool>(false);
 
@@ -102,8 +102,7 @@ void AsyncHttpClient::asyncGet(const std::string &host,
 
             // DNS resolved -> cancel DNS timer
             {
-                boost::system::error_code ignore;
-                timerDns->cancel(ignore);
+                timerDns->cancel();
             }
 
             // Connect timeout
@@ -132,8 +131,7 @@ void AsyncHttpClient::asyncGet(const std::string &host,
                     }
                     // cancel timers
                     {
-                        boost::system::error_code ignore;
-                        timerConn->cancel(ignore);
+                        timerConn->cancel();
                     }
 
                     auto doHttp = [cbWrap, completed, timerAll, host, path](auto &stream){
@@ -162,7 +160,7 @@ void AsyncHttpClient::asyncGet(const std::string &host,
                                         if (*completed) return;
                                         *completed = true;
                                         boost::system::error_code ignore;
-                                        timerAll->cancel(ignore);
+                                        timerAll->cancel();
                                         stream.next_layer().shutdown(tcp::socket::shutdown_both, ignore);
                                         stream.next_layer().close(ignore);
 
@@ -227,11 +225,11 @@ bool AsyncHttpClient::tryGet(const std::string &host,
                              int overallTimeoutMs,
                              Response *out,
                              std::string *errorOut) {
-    std::promise<std::tuple<bool, std::string, Response>> pr;
-    auto fu = pr.get_future();
+    auto pr = std::make_shared<std::promise<std::tuple<bool, std::string, Response>>>();
+    auto fu = pr->get_future();
     asyncGet(host, port, path, useSSL, dnsTimeoutMs, connectTimeoutMs, overallTimeoutMs,
-        [p = std::move(pr)](bool ok, const std::string &err, const Response &resp) mutable {
-            p.set_value({ok, err, resp});
+        [pr](bool ok, const std::string &err, const Response &resp) {
+            pr->set_value({ok, err, resp});
         }
     );
     auto result = fu.get();
@@ -253,11 +251,11 @@ void AsyncHttpClient::asyncPost(const std::string &host,
                                 const HttpCallback &cb) {
     ensureThreads();
 
-    auto resolver = std::make_shared<tcp::resolver>(ioContext_);
-    auto socket   = std::make_shared<tcp::socket>(ioContext_);
-    auto timerDns = std::make_shared<boost::asio::steady_timer>(ioContext_);
-    auto timerConn = std::make_shared<boost::asio::steady_timer>(ioContext_);
-    auto timerAll = std::make_shared<boost::asio::steady_timer>(ioContext_);
+    auto resolver = std::make_shared<tcp::resolver>(ioContext_.get_executor());
+    auto socket   = std::make_shared<tcp::socket>(ioContext_.get_executor());
+    auto timerDns = std::make_shared<boost::asio::steady_timer>(ioContext_.get_executor());
+    auto timerConn = std::make_shared<boost::asio::steady_timer>(ioContext_.get_executor());
+    auto timerAll = std::make_shared<boost::asio::steady_timer>(ioContext_.get_executor());
     auto cbWrap   = std::make_shared<HttpCallback>(cb);
     auto completed= std::make_shared<bool>(false);
 
@@ -300,8 +298,7 @@ void AsyncHttpClient::asyncPost(const std::string &host,
                 return;
             }
             {
-                boost::system::error_code ignore;
-                timerDns->cancel(ignore);
+                timerDns->cancel();
             }
             timerConn->expires_after(std::chrono::milliseconds(effConn));
             timerConn->async_wait([socket, cbWrap, completed](const boost::system::error_code &ecTo){
@@ -325,8 +322,7 @@ void AsyncHttpClient::asyncPost(const std::string &host,
                         return;
                     }
                     {
-                        boost::system::error_code ignore;
-                        timerConn->cancel(ignore);
+                        timerConn->cancel();
                     }
                     auto doHttpPost = [cbWrap, completed, timerAll, host, path, body, contentType](auto &stream){
                         http::request<http::string_body> req{http::verb::post, path.empty() ? "/" : path, 11};
@@ -354,7 +350,7 @@ void AsyncHttpClient::asyncPost(const std::string &host,
                                         if (*completed) return;
                                         *completed = true;
                                         boost::system::error_code ignore;
-                                        timerAll->cancel(ignore);
+                                        timerAll->cancel();
                                         stream.next_layer().shutdown(tcp::socket::shutdown_both, ignore);
                                         stream.next_layer().close(ignore);
                                         if (rec) {
@@ -416,11 +412,11 @@ bool AsyncHttpClient::tryPost(const std::string &host,
                               int overallTimeoutMs,
                               Response *out,
                               std::string *errorOut) {
-    std::promise<std::tuple<bool, std::string, Response>> pr;
-    auto fu = pr.get_future();
+    auto pr = std::make_shared<std::promise<std::tuple<bool, std::string, Response>>>();
+    auto fu = pr->get_future();
     asyncPost(host, port, path, useSSL, body, contentType, dnsTimeoutMs, connectTimeoutMs, overallTimeoutMs,
-        [p = std::move(pr)](bool ok, const std::string &err, const Response &resp) mutable {
-            p.set_value({ok, err, resp});
+        [pr](bool ok, const std::string &err, const Response &resp) {
+            pr->set_value({ok, err, resp});
         }
     );
     auto result = fu.get();

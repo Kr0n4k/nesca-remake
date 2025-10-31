@@ -13,7 +13,7 @@ AsyncConnector &AsyncConnector::instance() {
 }
 
 AsyncConnector::AsyncConnector()
-    : workGuard_(std::make_unique<boost::asio::executor_work_guard<boost::asio::io_context::executor_type>>(ioContext_.get_executor())) {
+    : workGuard_(std::make_unique<boost::asio::executor_work_guard<boost::asio::io_context::executor_type>>(boost::asio::make_work_guard(ioContext_))) {
     ensureThreads();
 }
 
@@ -41,10 +41,10 @@ void AsyncConnector::asyncConnect(const std::string &host,
                                   const ConnectCallback &cb) {
     ensureThreads();
 
-    auto resolver = std::make_shared<tcp::resolver>(ioContext_);
-    auto socket   = std::make_shared<tcp::socket>(ioContext_);
-    auto timerDns = std::make_shared<boost::asio::steady_timer>(ioContext_);
-    auto timerConn = std::make_shared<boost::asio::steady_timer>(ioContext_);
+    auto resolver = std::make_shared<tcp::resolver>(ioContext_.get_executor());
+    auto socket   = std::make_shared<tcp::socket>(ioContext_.get_executor());
+    auto timerDns = std::make_shared<boost::asio::steady_timer>(ioContext_.get_executor());
+    auto timerConn = std::make_shared<boost::asio::steady_timer>(ioContext_.get_executor());
     auto cbWrapper = std::make_shared<ConnectCallback>(cb);
 
     // State to ensure single completion
@@ -78,8 +78,7 @@ void AsyncConnector::asyncConnect(const std::string &host,
 
             // cancel DNS timer and start connect timer
             {
-                boost::system::error_code ignore;
-                timerDns->cancel(ignore);
+                timerDns->cancel();
             }
             timerConn->expires_after(std::chrono::milliseconds(connTimeout));
             timerConn->async_wait([socket, timerConn, cbWrapper, completed](const boost::system::error_code &ecTo){
@@ -96,11 +95,11 @@ void AsyncConnector::asyncConnect(const std::string &host,
                 [socket, timerConn, cbWrapper, completed](const boost::system::error_code &ec2, const tcp::endpoint&){
                     if (*completed) return;
                     *completed = true;
-                    boost::system::error_code ignore;
-                    timerConn->cancel(ignore);
+                    timerConn->cancel();
                     if (ec2) {
                         (*cbWrapper)(false, ec2.message());
                     } else {
+                        boost::system::error_code ignore;
                         socket->close(ignore);
                         (*cbWrapper)(true, "");
                     }
@@ -111,10 +110,10 @@ void AsyncConnector::asyncConnect(const std::string &host,
 }
 
 bool AsyncConnector::tryConnect(const std::string &host, int port, int timeoutMs, std::string *errorOut) {
-    std::promise<std::pair<bool, std::string>> pr;
-    auto fut = pr.get_future();
-    asyncConnect(host, port, timeoutMs, [p = std::move(pr)](bool ok, const std::string &err) mutable {
-        p.set_value({ok, err});
+    auto pr = std::make_shared<std::promise<std::pair<bool, std::string>>>();
+    auto fut = pr->get_future();
+    asyncConnect(host, port, timeoutMs, [pr](bool ok, const std::string &err) {
+        pr->set_value({ok, err});
     });
     auto res = fut.get();
     if (errorOut) *errorOut = res.second;
