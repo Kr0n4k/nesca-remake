@@ -3,6 +3,7 @@
 
 #include <QString>
 #include <QStringList>
+#include <QList>
 #include <QMap>
 #include <QJsonObject>
 #include <QRegularExpression>

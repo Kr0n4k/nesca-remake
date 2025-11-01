@@ -2,6 +2,7 @@
 #include <Connector.h>
 #include <QRegularExpression>
 #include <QTextStream>
+#include <QString>
 
 QMap<int, QStringList> ServiceVersionDetector::portToServiceMap;
 QMap<QString, QRegularExpression> ServiceVersionDetector::versionPatterns;
