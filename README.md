@@ -150,8 +150,9 @@ qmake nesca.pro
 make -j$(nproc)  # Linux/macOS
 mingw32-make     # Windows MinGW
 ```
-
+```
 или ./build_all.sh
+```
 
 
 ### Расширенное сканирование
