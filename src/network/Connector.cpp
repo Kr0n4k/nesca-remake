@@ -9,7 +9,9 @@
 #include <mutex>
 #include <atomic>
 #include <thread>
+#ifdef USE_ASIO_CONNECTOR
 #include <AsyncConnector.h> // For Boost.Asio port check
+#endif
 // #include "Filter.h" // Pantene: Где файл?
 
 //#if defined(WIN32) || defined(_WIN32) || defined(__WIN32) && !defined(__CYGWIN__)
@@ -800,6 +802,7 @@ bool portCheck(const char * sDVRIP, int wDVRPort) {
 	enforceRateLimit();
 	
 	// Choose between Async (Boost.Asio) and curl based on flag
+#ifdef USE_ASIO_CONNECTOR
 	if (gUseAsioPortCheck) {
 		int effectiveTimeout = (gAsioTimeoutMs > 0) ? gAsioTimeoutMs : (gTimeOut * 1000);
 		bool success = AsyncConnector::instance().tryConnect(sDVRIP, wDVRPort, effectiveTimeout);
@@ -809,6 +812,7 @@ bool portCheck(const char * sDVRIP, int wDVRPort) {
 		}
 		return success;
 	}
+#endif
 	
 	// Fallback to curl
 	CURL *curl = curl_easy_init();

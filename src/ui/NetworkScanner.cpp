@@ -26,6 +26,12 @@ NetworkScanner::NetworkScanner(QObject *parent)
     , m_verifySSL(false)
     , m_adaptive(false)
     , m_smartScan(false)
+    , m_deepScan(false)
+    , m_vulnScan(false)
+    , m_serviceVersion(false)
+    , m_deviceIdentification(true)
+    , m_monitoringMode(false)
+    , m_monitoringInterval(300)
     , m_isRunning(false)
 {
 }
@@ -41,7 +47,10 @@ NetworkScanner::~NetworkScanner()
 
 void NetworkScanner::startScan(const QString &mode, const QString &target,
                                 const QString &ports, int threads, int timeout,
-                                bool verifySSL, bool adaptive, bool smartScan)
+                                bool verifySSL, bool adaptive, bool smartScan,
+                                bool deepScan, bool vulnScan, bool serviceVersion,
+                                bool deviceIdentification, bool monitoringMode,
+                                int monitoringInterval)
 {
     if (m_isRunning) {
         return;
@@ -56,6 +65,12 @@ void NetworkScanner::startScan(const QString &mode, const QString &target,
     m_verifySSL = verifySSL;
     m_adaptive = adaptive;
     m_smartScan = smartScan;
+    m_deepScan = deepScan;
+    m_vulnScan = vulnScan;
+    m_serviceVersion = serviceVersion;
+    m_deviceIdentification = deviceIdentification;
+    m_monitoringMode = monitoringMode;
+    m_monitoringInterval = monitoringInterval;
     
     m_isRunning = true;
     

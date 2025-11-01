@@ -19,7 +19,10 @@ public:
     
     void startScan(const QString &mode, const QString &target, 
                    const QString &ports, int threads, int timeout,
-                   bool verifySSL, bool adaptive, bool smartScan);
+                   bool verifySSL, bool adaptive, bool smartScan,
+                   bool deepScan, bool vulnScan, bool serviceVersion,
+                   bool deviceIdentification, bool monitoringMode,
+                   int monitoringInterval);
     void stopScan();
 
 signals:
@@ -47,6 +50,12 @@ private:
     bool m_verifySSL;
     bool m_adaptive;
     bool m_smartScan;
+    bool m_deepScan;
+    bool m_vulnScan;
+    bool m_serviceVersion;
+    bool m_deviceIdentification;
+    bool m_monitoringMode;
+    int m_monitoringInterval;
     
     bool m_isRunning;
 };

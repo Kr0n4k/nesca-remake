@@ -6,6 +6,7 @@
 #include <memory>
 #include <thread>
 #include <vector>
+#include <mutex>
 
 #include <boost/asio.hpp>
 
@@ -41,6 +42,7 @@ private:
     boost::asio::io_context ioContext_;
     std::unique_ptr<boost::asio::executor_work_guard<boost::asio::io_context::executor_type>> workGuard_;
     std::vector<std::thread> workers_;
+    std::mutex mutex_;  // Protect ensureThreads()
 };
 
 #endif // ASYNCCONNECTOR_H

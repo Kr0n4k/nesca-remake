@@ -18,6 +18,8 @@ exists($$[QT_INSTALL_LIBS]/libQt5Core5Compat.so) {
 QMAKE_CFLAGS += -Wno-write-strings -g
 QMAKE_CXXFLAGS += -std=c++17 -Wno-write-strings -Wno-narrowing -fpermissive -g
 
+DEFINES += USE_ASIO_CONNECTOR
+
 TARGET = nesca
 TEMPLATE = app
 

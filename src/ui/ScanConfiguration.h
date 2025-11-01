@@ -28,6 +28,13 @@ public:
     bool verifySSL() const;
     bool adaptiveScan() const;
     bool smartScan() const;
+    bool deepScan() const;
+    bool vulnScan() const;
+    bool serviceVersion() const;
+    bool deviceIdentification() const;
+    bool monitoringMode() const;
+    int monitoringInterval() const;
+    QString profile() const;
     QString exportFormat() const;
     
 signals:
@@ -36,15 +43,21 @@ signals:
 
 private slots:
     void onScanModeChanged(int index);
+    void onBrowseFile();
     void onStartScan();
     void onStopScan();
     
 private:
     void setupUI();
+    void updateFileBrowseVisibility();
+    
+    // Profiles
+    QComboBox *m_profileCombo;
     
     // Scan mode
     QComboBox *m_scanModeCombo;
     QLineEdit *m_targetEdit;
+    QPushButton *m_browseButton;
     QLineEdit *m_portsEdit;
     QSpinBox *m_threadsSpin;
     
@@ -54,6 +67,15 @@ private:
     QCheckBox *m_verifySSLCheck;
     QCheckBox *m_adaptiveCheck;
     QCheckBox *m_smartScanCheck;
+    QCheckBox *m_deepScanCheck;
+    QCheckBox *m_vulnScanCheck;
+    QCheckBox *m_serviceVersionCheck;
+    QCheckBox *m_deviceIdentificationCheck;
+    
+    // Monitoring options
+    QGroupBox *m_monitoringGroup;
+    QCheckBox *m_monitoringModeCheck;
+    QSpinBox *m_monitoringIntervalSpin;
     
     // Export options
     QGroupBox *m_exportGroup;

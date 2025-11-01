@@ -26,6 +26,7 @@ AsyncConnector::~AsyncConnector() {
 }
 
 void AsyncConnector::ensureThreads() {
+    std::lock_guard<std::mutex> lock(mutex_);
     if (!workers_.empty()) return;
     unsigned int threadCount = std::max(2u, std::thread::hardware_concurrency());
     if (gAsioThreads > 0) threadCount = static_cast<unsigned int>(gAsioThreads);

@@ -195,6 +195,12 @@ void MainWindow::startScan()
     bool verifySSL = m_scanConfig->verifySSL();
     bool adaptive = m_scanConfig->adaptiveScan();
     bool smartScan = m_scanConfig->smartScan();
+    bool deepScan = m_scanConfig->deepScan();
+    bool vulnScan = m_scanConfig->vulnScan();
+    bool serviceVersion = m_scanConfig->serviceVersion();
+    bool deviceIdentification = m_scanConfig->deviceIdentification();
+    bool monitoringMode = m_scanConfig->monitoringMode();
+    int monitoringInterval = m_scanConfig->monitoringInterval();
     
     // Validate inputs
     if (target.isEmpty()) {
@@ -213,7 +219,9 @@ void MainWindow::startScan()
     m_totalScanned = 0;
     
     // Start scanner
-    m_scanner->startScan(mode, target, ports, threads, timeout, verifySSL, adaptive, smartScan);
+    m_scanner->startScan(mode, target, ports, threads, timeout, verifySSL, adaptive, smartScan,
+                         deepScan, vulnScan, serviceVersion, deviceIdentification,
+                         monitoringMode, monitoringInterval);
     
     // Update UI
     m_statusLabel->setText(tr("Scanning..."));

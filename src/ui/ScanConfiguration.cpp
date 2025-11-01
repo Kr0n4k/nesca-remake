@@ -1,11 +1,15 @@
 #include "ScanConfiguration.h"
 #include <QPushButton>
 #include <QLabel>
+#include <QFileDialog>
+#include <QHBoxLayout>
 
 ScanConfiguration::ScanConfiguration(QWidget *parent)
     : QWidget(parent)
+    , m_profileCombo(nullptr)
     , m_scanModeCombo(nullptr)
     , m_targetEdit(nullptr)
+    , m_browseButton(nullptr)
     , m_portsEdit(nullptr)
     , m_threadsSpin(nullptr)
     , m_advancedGroup(nullptr)
@@ -13,6 +17,13 @@ ScanConfiguration::ScanConfiguration(QWidget *parent)
     , m_verifySSLCheck(nullptr)
     , m_adaptiveCheck(nullptr)
     , m_smartScanCheck(nullptr)
+    , m_deepScanCheck(nullptr)
+    , m_vulnScanCheck(nullptr)
+    , m_serviceVersionCheck(nullptr)
+    , m_deviceIdentificationCheck(nullptr)
+    , m_monitoringGroup(nullptr)
+    , m_monitoringModeCheck(nullptr)
+    , m_monitoringIntervalSpin(nullptr)
     , m_exportGroup(nullptr)
     , m_exportFormatCombo(nullptr)
     , m_startButton(nullptr)
@@ -51,6 +62,31 @@ void ScanConfiguration::setupUI()
     guideHint->setWordWrap(true);
     mainLayout->addWidget(guideHint);
     
+    // Profile selection
+    QFormLayout *profileLayout = new QFormLayout();
+    profileLayout->setVerticalSpacing(12);
+    m_profileCombo = new QComboBox(this);
+    m_profileCombo->addItem("None (Custom)", "");
+    m_profileCombo->addItem("🚀 Quick Scan", "quick-scan");
+    m_profileCombo->addItem("🔍 Full Scan", "full-scan");
+    m_profileCombo->addItem("🕵️ Stealth Scan", "stealth-scan");
+    m_profileCombo->addItem("📱 IoT Scan", "iot-scan");
+    m_profileCombo->addItem("🌐 Network Scan", "network-scan");
+    m_profileCombo->addItem("🛡️ Pentest", "pentest");
+    m_profileCombo->setToolTip(
+        "<b>Preset Profiles:</b><br>"
+        "Choose a pre-configured profile or use Custom.<br><br>"
+        "<b>Quick Scan:</b> Fast basic scan<br>"
+        "<b>Full Scan:</b> Comprehensive scan<br>"
+        "<b>Stealth Scan:</b> Slow, quiet scanning<br>"
+        "<b>IoT Scan:</b> Optimized for IoT devices<br>"
+        "<b>Network Scan:</b> General network discovery<br>"
+        "<b>Pentest:</b> Penetration testing mode"
+    );
+    profileLayout->addRow("Profile:", m_profileCombo);
+    mainLayout->addLayout(profileLayout);
+    mainLayout->addWidget(new QLabel("")); // Spacer
+    
     // Scan mode selection
     QFormLayout *modeLayout = new QFormLayout();
     modeLayout->setVerticalSpacing(12);
@@ -74,6 +110,11 @@ void ScanConfiguration::setupUI()
     // Target input
     QFormLayout *targetLayout = new QFormLayout();
     targetLayout->setVerticalSpacing(12);
+    
+    // Target input with browse button
+    QHBoxLayout *targetInputLayout = new QHBoxLayout();
+    targetInputLayout->setSpacing(8);
+    
     m_targetEdit = new QLineEdit(this);
     m_targetEdit->setPlaceholderText("192.168.1.0/24 or 192.168.1.1-192.168.1.255");
     m_targetEdit->setToolTip(
@@ -89,9 +130,19 @@ void ScanConfiguration::setupUI()
         "<b>File:</b> /path/to/ips.txt (one IP per line)"
     );
     
+    m_browseButton = new QPushButton("Browse...", this);
+    m_browseButton->setStyleSheet(
+        "QPushButton { padding: 8px 16px; min-width: 80px; }"
+    );
+    m_browseButton->setToolTip("Browse for a file to import IP addresses from");
+    
+    targetInputLayout->addWidget(m_targetEdit);
+    targetInputLayout->addWidget(m_browseButton);
+    
     QLabel *targetHelp = new QLabel("ℹ️ Use CIDR (/24) or range (192.168.1.1-255) notation", this);
     targetHelp->setStyleSheet("font-size: 10px; color: #888; font-style: italic;");
-    targetLayout->addRow("Target:", m_targetEdit);
+    
+    targetLayout->addRow("Target:", targetInputLayout);
     targetLayout->addRow("", targetHelp);
     mainLayout->addLayout(targetLayout);
     
@@ -195,8 +246,102 @@ void ScanConfiguration::setupUI()
     );
     advancedLayout->addRow("", m_smartScanCheck);
     
+    m_deepScanCheck = new QCheckBox("Deep scan (endpoint discovery)", this);
+    m_deepScanCheck->setToolTip(
+        "<b>Deep Scanning:</b><br>"
+        "Discover hidden endpoints and API paths.<br><br>"
+        "<b>What it does:</b><br>"
+        "• Searches for common endpoints (/admin, /api, /config)<br>"
+        "• Discovers undocumented API endpoints<br>"
+        "• Finds firmware information<br>"
+        "• Identifies device capabilities<br><br>"
+        "<b>Use when:</b> Penetration testing, security audits"
+    );
+    advancedLayout->addRow("", m_deepScanCheck);
+    
+    m_vulnScanCheck = new QCheckBox("Vulnerability scan (CVE check)", this);
+    m_vulnScanCheck->setToolTip(
+        "<b>Vulnerability Scanning:</b><br>"
+        "Check devices against known CVEs and exploits.<br><br>"
+        "<b>Supported checks:</b><br>"
+        "• CVE-2021-36260 (Hikvision)<br>"
+        "• CVE-2021-33045 (Dahua)<br>"
+        "• CVE-2017-7921 (Hikvision)<br>"
+        "• Plus many more<br><br>"
+        "<b>Warning:</b> Slow down scanning significantly<br>"
+        "<b>Use for:</b> Security assessment, bug hunting"
+    );
+    advancedLayout->addRow("", m_vulnScanCheck);
+    
+    m_serviceVersionCheck = new QCheckBox("Service version detection", this);
+    m_serviceVersionCheck->setToolTip(
+        "<b>Service Version Detection:</b><br>"
+        "Identify exact firmware and service versions.<br><br>"
+        "<b>What it detects:</b><br>"
+        "• HTTP server versions<br>"
+        "• Firmware versions<br>"
+        "• Device firmware build dates<br>"
+        "• Application versions<br><br>"
+        "<b>Use for:</b> Inventory, security auditing"
+    );
+    advancedLayout->addRow("", m_serviceVersionCheck);
+    
+    m_deviceIdentificationCheck = new QCheckBox("Device identification", this);
+    m_deviceIdentificationCheck->setChecked(true); // Enabled by default
+    m_deviceIdentificationCheck->setToolTip(
+        "<b>Device Identification:</b><br>"
+        "Auto-detect manufacturer and model.<br><br>"
+        "<b>Supported brands:</b><br>"
+        "• Hikvision, Dahua, Axis<br>"
+        "• Panasonic, Sony, Samsung<br>"
+        "• Bosch, Pelco, Vivotek<br>"
+        "• Foscam, Uniview, Reolink, TP-Link<br><br>"
+        "<b>Recommended:</b> Keep enabled for best results"
+    );
+    advancedLayout->addRow("", m_deviceIdentificationCheck);
+    
     m_advancedGroup->setLayout(advancedLayout);
     mainLayout->addWidget(m_advancedGroup);
+    
+    // Monitoring group
+    m_monitoringGroup = new QGroupBox("🔍 Monitoring Mode", this);
+    QFormLayout *monitoringLayout = new QFormLayout();
+    monitoringLayout->setVerticalSpacing(10);
+    
+    m_monitoringModeCheck = new QCheckBox("Enable continuous monitoring", this);
+    m_monitoringModeCheck->setToolTip(
+        "<b>Continuous Monitoring:</b><br>"
+        "Repeatedly scan network for changes.<br><br>"
+        "<b>How it works:</b><br>"
+        "• Scans at specified intervals<br>"
+        "• Detects new/removed devices<br>"
+        "• Tracks device changes<br>"
+        "• Creates snapshots<br><br>"
+        "<b>Best for:</b> Network monitoring, security surveillance"
+    );
+    monitoringLayout->addRow("", m_monitoringModeCheck);
+    
+    m_monitoringIntervalSpin = new QSpinBox(this);
+    m_monitoringIntervalSpin->setRange(60, 86400);
+    m_monitoringIntervalSpin->setValue(300); // 5 minutes default
+    m_monitoringIntervalSpin->setSuffix(" seconds");
+    m_monitoringIntervalSpin->setToolTip(
+        "<b>Monitoring Interval:</b><br>"
+        "Time between scans.<br><br>"
+        "<b>Recommended:</b><br>"
+        "• 300s (5min): Normal monitoring<br>"
+        "• 600s (10min): Light monitoring<br>"
+        "• 3600s (1h): Periodic checks<br><br>"
+        "<b>Range:</b> 60-86400 seconds"
+    );
+    monitoringLayout->addRow("Interval:", m_monitoringIntervalSpin);
+    
+    QLabel *monitoringHelp = new QLabel("ℹ️ Repeats scan automatically at specified interval", this);
+    monitoringHelp->setStyleSheet("font-size: 10px; color: #888; font-style: italic;");
+    monitoringLayout->addRow("", monitoringHelp);
+    
+    m_monitoringGroup->setLayout(monitoringLayout);
+    mainLayout->addWidget(m_monitoringGroup);
     
     // Export group
     m_exportGroup = new QGroupBox("📊 Export Options", this);
@@ -263,6 +408,10 @@ void ScanConfiguration::setupUI()
     connect(m_stopButton, &QPushButton::clicked, this, &ScanConfiguration::onStopScan);
     connect(m_scanModeCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), 
             this, &ScanConfiguration::onScanModeChanged);
+    connect(m_browseButton, &QPushButton::clicked, this, &ScanConfiguration::onBrowseFile);
+    
+    // Initial visibility update
+    updateFileBrowseVisibility();
 }
 
 QString ScanConfiguration::scanMode() const
@@ -310,6 +459,41 @@ QString ScanConfiguration::exportFormat() const
     return m_exportFormatCombo->currentData().toString();
 }
 
+QString ScanConfiguration::profile() const
+{
+    return m_profileCombo->currentData().toString();
+}
+
+bool ScanConfiguration::deepScan() const
+{
+    return m_deepScanCheck->isChecked();
+}
+
+bool ScanConfiguration::vulnScan() const
+{
+    return m_vulnScanCheck->isChecked();
+}
+
+bool ScanConfiguration::serviceVersion() const
+{
+    return m_serviceVersionCheck->isChecked();
+}
+
+bool ScanConfiguration::deviceIdentification() const
+{
+    return m_deviceIdentificationCheck->isChecked();
+}
+
+bool ScanConfiguration::monitoringMode() const
+{
+    return m_monitoringModeCheck->isChecked();
+}
+
+int ScanConfiguration::monitoringInterval() const
+{
+    return m_monitoringIntervalSpin->value();
+}
+
 void ScanConfiguration::onScanModeChanged(int index)
 {
     // Update placeholder text based on mode
@@ -321,6 +505,31 @@ void ScanConfiguration::onScanModeChanged(int index)
     } else if (mode == "import") {
         m_targetEdit->setPlaceholderText("/path/to/file.txt");
     }
+    
+    // Update browse button visibility
+    updateFileBrowseVisibility();
+}
+
+void ScanConfiguration::onBrowseFile()
+{
+    // Open file dialog for text files
+    QString fileName = QFileDialog::getOpenFileName(
+        this,
+        tr("Select IP Address File"),
+        QString(),
+        tr("Text Files (*.txt);;All Files (*)")
+    );
+    
+    if (!fileName.isEmpty()) {
+        m_targetEdit->setText(fileName);
+    }
+}
+
+void ScanConfiguration::updateFileBrowseVisibility()
+{
+    // Show browse button only for import mode
+    QString mode = m_scanModeCombo->currentData().toString();
+    m_browseButton->setVisible(mode == "import");
 }
 
 void ScanConfiguration::onStartScan()
