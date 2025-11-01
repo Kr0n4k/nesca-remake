@@ -5,8 +5,10 @@
 #include <BruteUtils.h>
 
 #if defined(WIN32) || defined(_WIN32) || defined(__WIN32) && !defined(__CYGWIN__)
+#define NOMINMAX  // Prevent Windows.h from defining min/max macros
 #include <iphlpapi.h>
 #include <icmpapi.h>
+#undef BYTE  // Undefine BYTE macro to avoid conflict with std::byte
 #pragma comment(lib, "iphlpapi.lib")
 //#pragma comment(lib,"libcurldll.a")
 #endif

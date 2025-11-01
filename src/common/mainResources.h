@@ -4,11 +4,18 @@
 #include <curl/curl.h>
 #include <vector>
 #if defined(WIN32) || defined(_WIN32) || defined(__WIN32) && !defined(__CYGWIN__)
+#define NOMINMAX  // Prevent Windows.h from defining min/max macros
 #include "iostream"
 #include <time.h>
 #include <process.h>
 #include <conio.h>
 #include <direct.h>
+
+// Undefine BYTE macro to avoid conflict with std::byte (C++17)
+// This must be done after Windows headers are included
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
 
 #define GetCurrentDir _getcwd
 #else
@@ -83,6 +90,8 @@ typedef int					BOOL;
 #ifndef WSAECONNREFUSED
 #define WSAECONNREFUSED        ECONNREFUSED         //10061
 #endif
+
+#undef BYTE  // Undefine BYTE macro to avoid conflict with std::byte (C++17)
 
 #endif
 
