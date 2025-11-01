@@ -10,21 +10,25 @@
 *.exp
 *.lib
 *.dylib
+build_gui/
 
 # Qt build files
 Makefile
 Makefile.*
 *.pro.user
 *.pro.user.*
+*.pro.backup
 object_script.*
 moc_*.cpp
 moc_*.h
+moc_*.o
 qrc_*.cpp
 ui_*.h
 
 # Binaries
 nesca
 nesca.exe
+nesca-gui
 test_qt
 test_qt_modules
 
@@ -37,6 +41,31 @@ test_qt_modules
 *.iml
 *.code-workspace
 
+# Visual Studio files
+*.rc
+*.ruleset
+PropertySheet*.props
+*.vcxproj
+*.vcxproj.filters
+*.sln
+*.suo
+*.sdf
+*.opensdf
+*.aps
+*.pch
+*.vspscc
+*_i.c
+*_p.c
+*.ncb
+*.tlb
+*.tlh
+*.cache
+[Bb]in/
+*.sbr
+obj/
+_ReSharper*/
+[Tt]est[Rr]esult*
+
 # Build directories
 debug/
 release/
@@ -47,6 +76,8 @@ build/
 results_*/
 export_*.json
 export_*.csv
+export__*.json
+export__*.csv
 output.txt
 debugData.txt
 tempIPLst.bk
@@ -56,13 +87,14 @@ restore
 # Single-file results created by runs (e.g., results__test_*.txt)
 results__*
 results__*.txt
-# Exports with double underscore naming
-export__*.json
-export__*.csv
 
 # Test files
 test_*.txt
 test_*.cpp
+
+# Temporary and debug files
+debug_test.txt
+finder.o
 
 # Python cache
 __pycache__/
