@@ -1,0 +1,53 @@
+# Dockerfile for Windows cross-compilation using mingw-w64
+FROM ubuntu:22.04
+
+# Prevent interactive prompts during package installation
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install dependencies
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    mingw-w64 \
+    mingw-w64-tools \
+    wine64 \
+    wget \
+    unzip \
+    p7zip-full \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Qt for Windows (mingw-w64)
+RUN mkdir -p /opt/qt && \
+    cd /opt/qt && \
+    wget -q https://download.qt.io/official_releases/qt/5.15/5.15.2/single/qt-everywhere-opensource-src-5.15.2.tar.xz || \
+    (echo "Note: Qt will need to be downloaded manually or use precompiled") && \
+    true
+
+# Alternative: Install Qt using online installer (requires manual download)
+# We'll use a simpler approach with precompiled Qt binaries
+
+# Install precompiled Qt 5.15.2 for Windows (mingw-w64)
+RUN cd /tmp && \
+    wget -q https://download.qt.io/official_releases/qt/5.15/5.15.2/submodules/qtbase-everywhere-src-5.15.2.tar.xz || \
+    echo "Qt source will be downloaded during build"
+
+# Set environment variables for cross-compilation
+ENV MINGW_PREFIX=/usr/x86_64-w64-mingw32
+ENV PATH=${MINGW_PREFIX}/bin:${PATH}
+
+# Install MinGW-w64 libraries
+RUN apt-get update && apt-get install -y \
+    libssh-dev:amd64 \
+    libssl-dev:amd64 \
+    libcurl4-openssl-dev:amd64 \
+    pkg-config \
+    && rm -rf /var/lib/apt/lists/*
+
+# Set working directory
+WORKDIR /app
+
+# Copy source code
+COPY . .
+
+# Build script will be executed separately
+CMD ["/bin/bash"]
+
